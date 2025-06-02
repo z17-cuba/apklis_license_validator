@@ -1,0 +1,20 @@
+name: apklis_license_validator_example
+description: Demuestra cómo utilizar el paquete apklis_license_validator.
+publish_to: "none"
+
+environment:
+  sdk: ^3.5.1
+
+dependencies:
+  apklis_license_validator:
+    path: ../
+  flutter:
+    sdk: flutter
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true

@@ -1,0 +1,27 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- READ ACCOUNTS PERMISSION   -->
+    <uses-permission
+        android:name="android.permission.AUTHENTICATE_ACCOUNTS"
+        android:maxSdkVersion="22" />
+    <uses-permission android:name="android.permission.GET_ACCOUNTS" />
+    <uses-permission
+        android:name="android.permission.USE_CREDENTIALS"
+        android:maxSdkVersion="22" />
+
+    <!-- SHOW DIALOG OVERLAY PERMISSION   -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+
+    <application>
+        <!-- QR Dialog Activity -->
+        <activity
+            android:name=".QrDialogActivity"
+            android:theme="@android:style/Theme.DeviceDefault.Light.Dialog"
+            android:exported="false"
+            android:launchMode="singleInstance"
+            android:excludeFromRecents="true"
+            android:taskAffinity=""
+            android:finishOnTaskLaunch="true" />
+    </application>
+
+</manifest>
