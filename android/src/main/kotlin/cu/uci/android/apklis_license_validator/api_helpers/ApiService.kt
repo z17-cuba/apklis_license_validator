@@ -2,9 +2,9 @@ package cu.uci.android.apklis_license_validator.api_helpers
 
 import com.google.gson.Gson
 import cu.uci.android.apklis_license_validator.models.LicenseRequest
-import cu.uci.android.apklis_license_validator.models.LicenseResponse
 import cu.uci.android.apklis_license_validator.models.PaymentRequest
 import cu.uci.android.apklis_license_validator.models.PaymentResponse
+import cu.uci.android.apklis_license_validator.models.VerifyLicenseResponse
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
@@ -47,6 +47,7 @@ class ApiService {
                     .addHeader("Content-Type", "application/json")
                     .build()
 
+
                 val response = client.newCall(httpRequest).execute()
 
                 when {
@@ -54,27 +55,22 @@ class ApiService {
                         val responseBody = response.body?.string()
                         if (responseBody != null) {
                             try {
-                                //TODO quitar este QR de mentiritas
-                                val payResponse = gson.fromJson("{'qr': '{id_transaccion:APK00000000004050865,importe:15.0,moneda:CUP,numero_proveedor:57001,version:1}\"'}", PaymentResponse::class.java)
-//                                val payResponse = gson.fromJson(responseBody, PaymentResponse::class.java)
-                                ApiResult.Success(payResponse)
+                                val headers = response.headers.toMap()
+                                val payResponse = gson.fromJson(responseBody, PaymentResponse::class.java)
+                                ApiResult.Success(payResponse, headers)
                             } catch (e: Exception) {
                                 ApiResult.Exception(e)
                             }
                         } else {
-                            ApiResult.Error("Empty response body", response.code)
+                            ApiResult.Error(response.code, "Empty response body" )
                         }
                     }
                     else -> {
-                        //TODO quitar este QR de mentiritas
-                        val payResponse = gson.fromJson("{'qr': '{id_transaccion:APK00000000004050865,importe:15.0,moneda:CUP,numero_proveedor:57001,version:1}\"'}", PaymentResponse::class.java)
-//                                val payResponse = gson.fromJson(responseBody, PaymentResponse::class.java)
-                        ApiResult.Success(payResponse)
-                       /*  val errorBody = response.body?.string()
+                         val errorBody = response.body?.string()
                         ApiResult.Error(
                             message = errorBody ?: "HTTP ${response.code}: ${response.message}",
                             code = response.code
-                        )*/
+                        )
                     }
                 }
             } catch (e: IOException) {
@@ -87,7 +83,7 @@ class ApiService {
 
     /// Performs verification against the API to find out which license the user has active
     /// Returns the active license (if any)
-    suspend fun verifyCurrentLicense(request: LicenseRequest, accessToken: String): ApiResult<LicenseResponse> {
+    suspend fun verifyCurrentLicense(request: LicenseRequest, accessToken: String): ApiResult<VerifyLicenseResponse> {
         return withContext(Dispatchers.IO) {
             try {
                 val jsonBody = gson.toJson(request)
@@ -107,13 +103,14 @@ class ApiService {
                         val responseBody = response.body?.string()
                         if (responseBody != null) {
                             try {
-                                val licenseResponse = gson.fromJson(responseBody, LicenseResponse::class.java)
-                                ApiResult.Success(licenseResponse)
+                                val headers = response.headers.toMap()
+                                val licenseResponse = gson.fromJson(responseBody, VerifyLicenseResponse::class.java)
+                                ApiResult.Success(licenseResponse, headers)
                             } catch (e: Exception) {
                                 ApiResult.Exception(e)
                             }
                         } else {
-                            ApiResult.Error("Empty response body", response.code)
+                            ApiResult.Error(response.code, "Empty response body",)
                         }
                     }
                     else -> {

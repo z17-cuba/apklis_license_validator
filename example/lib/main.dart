@@ -20,14 +20,14 @@ class ExampleApp extends StatefulWidget {
 class ExampleAppState extends State<ExampleApp> {
   final keyForm = GlobalKey<FormState>();
   final packageIdController = TextEditingController(
-    text: 'works.a4t0mic.book_management',
+    text: 'com.example.app',
   );
   final licenseIdController = TextEditingController(
-    text: '70dd68bf-c0bf-4c10-b76f-5d906b8bb945',
+    // text: '70dd68bf-c0bf-4c10-b76f-5d906b8bb945',
 
-    // Esta ya esta pagada para osmanpa y el device:
+    // Esta ya esta pagada para alaincj y el device:
     // gRGmIfx53dRcCRDU0MhOlTpZ0rlh4jZEvmRn0+21+KDPBsNHhhNEIohNiyhLdKHGlNMpEAiJDwpaxSNa+fHML/qjso4hyUqkPoPeKwwlQV8GWOWiPcXiECxnIb1aa658
-    // text: '3a640386-7ebf-477a-8231-f627f69536de',
+    text: '3a640386-7ebf-477a-8231-f627f69536de',
   );
   ApklisLicensePaymentStatus? status;
 
@@ -169,6 +169,19 @@ class ExampleAppState extends State<ExampleApp> {
                       margin: const EdgeInsets.all(5),
                       child: const Text('License payment status:'),
                     ),
+
+                    if (status!.license != null)
+                      Container(
+                        margin: const EdgeInsets.all(5),
+                        child: Text(
+                          status!.license ?? '',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 20,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
                     Container(
                       margin: const EdgeInsets.all(5),
                       child: Text(

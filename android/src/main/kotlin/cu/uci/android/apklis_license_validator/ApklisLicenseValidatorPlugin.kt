@@ -44,27 +44,16 @@ class ApklisLicenseValidatorPlugin : FlutterPlugin, MethodCallHandler {
                         try {
                             val response: Map<String, Any>? =
                                 PurchaseAndVerify.purchaseLicense(
-                                    context,  licenseUuid,
-                                )
+                                    context,  licenseUuid)
 
                             Log.d(TAG, "response: $response")
 
-                            if(response != null){
-                                // An error occurred during payment
-                                if(response["error"] != null){
+                                if(response != null){
                                     withContext(Dispatchers.Main) {
                                         // Register a "success" callback to be returned to the main app
                                         result.success(response)
                                     }
-                                    return@launch
                                 }
-
-                                //   TODO parsear esto con el mensaje del Websocket
-                                // Switch to main thread for UI updates
-                                withContext(Dispatchers.Main) {
-                                    result.success({})
-                                }
-                            }
 
                         } catch (e: Exception) {
                             // Log the exception and return an error to Flutter

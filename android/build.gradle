@@ -41,7 +41,7 @@ android {
         main.java.srcDirs += 'src/main/kotlin'
     }
     defaultConfig {
-        minSdkVersion 24
+        minSdkVersion 26
         targetSdkVersion 34
     }
     lintOptions {
@@ -69,6 +69,9 @@ dependencies {
     implementation 'com.google.zxing:core:3.5.2'
     implementation 'com.lightspark:compose-qr-code:1.0.1'
     implementation 'androidx.appcompat:appcompat:1.6.1'
+
+    // Dependencias para criptografía
+    implementation 'androidx.security:security-crypto:1.1.0-alpha06'
 }
 
 

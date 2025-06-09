@@ -23,11 +23,10 @@ class WebSocketClient(
     private var pingJob: Job? = null
     private var connectionJob: Job? = null
     private var deviceId: String? = null
+    private var code: String? = null
 
     private val _connectionState = MutableStateFlow(ConnectionState())
-    val connectionState: StateFlow<ConnectionState> = _connectionState
 
-    private val subscribedChannels = mutableSetOf<String>()
     private val pendingMessages = mutableListOf<String>()
 
     companion object {
@@ -38,8 +37,9 @@ class WebSocketClient(
         private const val WS_URL = "wss://pubsub.mprc.cu"
     }
 
-    fun init(deviceId: String) {
+    fun init(code: String, deviceId: String) {
         this.deviceId = deviceId
+        this.code = code
         initializeHttpClient()
     }
 
@@ -72,7 +72,7 @@ class WebSocketClient(
                         sendConnectMessage()
 
                         // Subscribe to the user channel after connection
-                        subscribeToChannel(deviceId ?: "")
+                        subscribeToChannel(code ?: "", deviceId ?: "")
 
                         // Start ping-pong mechanism
                         startPingPong()
@@ -155,12 +155,7 @@ class WebSocketClient(
             message.startsWith("MSG ") -> {
                 processNatsMessage(message)
             }
-            message.startsWith("CONNECTED ") -> {
-                // Connection confirmed, resubscribe to channels if any
-                subscribedChannels.forEach { channel ->
-                    subscribeToChannel(channel)
-                }
-            }
+
             message.startsWith("-ERR ") -> {
                 // Error message
                 Log.e(TAG, "Server returned error: ${message.substring(5)}")
@@ -250,12 +245,12 @@ class WebSocketClient(
         }
     }
 
-   private fun subscribeToChannel(channel: String) {
+   private fun subscribeToChannel(code: String, channel: String) {
        // 2. Suscribirse al canal (formato: SUB <canal> <sid>\r\n)
        // "1" es un ID de suscripción arbitrario
 
-       val randomId: String = generateId()
-       val subMsg : String = "SUB $channel $randomId\r\n";
+       //TODO remover el "_DEV" si es para PROD
+       val subMsg : String = "SUB APKLIS_DEVICES_DEV.$code.$channel\r\n";
         if (_connectionState.value.isConnected) {
             webSocket?.send(subMsg);
             Log.d(TAG, "Suscripción enviada: " + subMsg.trim());
@@ -263,12 +258,6 @@ class WebSocketClient(
             pendingMessages.add(subMsg)
         }
     }
-
-/*    fun unsubscribeFromChannel(channel: String) {
-        val unsubMsg = Message(type = "UNSUB", channel = channel)
-        sendMessage(unsubMsg)
-        subscribedChannels.remove(channel)
-    }*/
 
 
     private fun sendPendingMessages() {
@@ -304,7 +293,6 @@ class WebSocketClient(
         pingJob?.cancel()
         connectionJob?.cancel()
         _connectionState.value = ConnectionState(isConnected = false)
-        subscribedChannels.clear()
         pendingMessages.clear()
     }
 
