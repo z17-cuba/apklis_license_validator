@@ -3,19 +3,21 @@ package cu.uci.android.apklis_license_validator
 import android.Manifest
 import android.accounts.AccountManager
 import android.content.Context
-import android.os.Bundle
 import android.os.RemoteException
 import android.util.Log
 import androidx.annotation.RequiresPermission
-import com.google.gson.Gson
 import cu.uci.android.apklis_license_validator.api_helpers.ApiResult
 import cu.uci.android.apklis_license_validator.api_helpers.ApiService
 import cu.uci.android.apklis_license_validator.models.LicenseRequest
 import cu.uci.android.apklis_license_validator.models.PaymentRequest
-import cu.uci.android.apklis_license_validator.models.Qr
+import cu.uci.android.apklis_license_validator.models.QrCode
 import cu.uci.android.apklis_license_validator.models.VerifyLicenseResponse
 import cu.uci.android.apklis_license_validator.signature_helpers.SignatureVerificationService
-import org.json.JSONObject
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlin.coroutines.Continuation
 import kotlin.coroutines.resume
 import kotlin.coroutines.suspendCoroutine
 
@@ -33,6 +35,7 @@ class PurchaseAndVerify {
             val deviceIdAndUsername :  Pair<String?, String?>? = getDeviceIdAndUsername(context)
             try {
                 WebSocketClient().apply {
+
                     val accessToken = getAccountAccessToken(context)
 
                     val paymentResult = ApiService().payLicenseWithTF(
@@ -43,11 +46,12 @@ class PurchaseAndVerify {
 
                     return when (paymentResult) {
                         is ApiResult.Success -> {
+                            val qrCode : QrCode = paymentResult.data
 
                             // Verify signature only on successful response
                             val isSignatureValid = verifySignatureIfPresent(
                                 context,
-                                paymentResult.data.toJsonString(),
+                                qrCode.toJsonString(),
                                 paymentResult.headers
                             )
 
@@ -58,47 +62,16 @@ class PurchaseAndVerify {
                                     put("username", deviceIdAndUsername?.second ?: "")
                                 }
                             } else {
-                                val qrData = paymentResult.data.qr
-                                if (qrData != null) {
-                                    val qrObject = parseQrString(qrData)
+                                // Handle WebSocket connection and QR dialog
+                                return handleWebSocketAndQrDialog(
+                                    context,
+                                    qrCode,
+                                    deviceIdAndUsername
+                                )
 
-                                    if (qrObject != null) {
-                                        
-                                        val qrDialogManager = QrDialogManager(context)
-                    
-                                        return suspendCoroutine { continuation ->
-                                            qrDialogManager.showQrDialog(
-                                                qrObject,
-                                                qrData
-                                            ) { success ->
-                                                if (success) {
-                                                    Log.d(TAG, "Dialog shown successfully")
-                                                } else {
-                                                    val errorMessage = "Fallo al mostrar el diálogo"
-                                                    Log.e(TAG, errorMessage)
-                                                    continuation.resume(mapOf("error" to errorMessage))
-                                                }
-                                            }
-                                        }
-                                    } else {
-                                        val errorMessage =
-                                            "Fallo al mostrar el QR - no se pudo generar el QR"
-                                        Log.e(TAG, errorMessage)
-                                        mapOf("error" to errorMessage)
-                                    }
-                                } else {
-                                    val errorMessage = "Fallo al mostrar el QR - no se obtuvo el QR"
-                                    Log.e(TAG, errorMessage)
-                                    mapOf("error" to errorMessage)
-                                }
                             }
-
                         }
                         is ApiResult.Error -> {
-
-                            init(getAccountCode(context), deviceIdAndUsername?.first ?: "")
-                            connectAndSubscribe()
-
                             val errorMessage = "Error al efectuar el pago ${paymentResult.code}: ${paymentResult.message}"
                             Log.e(TAG, errorMessage)
                             buildMap<String, Any> {
@@ -108,10 +81,6 @@ class PurchaseAndVerify {
                             }
                         }
                         is ApiResult.Exception -> {
-
-                            init(getAccountCode(context), deviceIdAndUsername?.first ?: "")
-                            connectAndSubscribe()
-
                             val errorMessage = "Excepción al efectuar el pago: ${paymentResult.throwable.message}"
                             Log.e(TAG, errorMessage)
                             buildMap<String, Any> {
@@ -127,6 +96,93 @@ class PurchaseAndVerify {
                 e.printStackTrace()
             }
             return null
+        }
+
+
+        private suspend fun handleWebSocketAndQrDialog(
+            context: Context,
+            qrCode: QrCode,
+            deviceIdAndUsername: Pair<String?, String?>?
+        ): Map<String, Any> = suspendCoroutine { continuation ->
+
+            // Flag to track if continuation has been resumed
+            var isResumed = false
+
+            val webSocketClient = WebSocketClient(object : WebSocketEventListener {
+                override fun onConnected() {
+                    Log.d(TAG, "WebSocket connected successfully")
+                    // Now show the QR dialog since WebSocket is connected
+                    if (!isResumed) {
+                        Log.d(TAG, "WebSocket now shows QR")
+                            showQrDialogAfterConnection(context, qrCode, continuation, deviceIdAndUsername) { resumed ->
+                            isResumed = resumed
+                        }
+                    }
+                }
+
+                override fun onDisconnected(reason: String?) {
+                    Log.d(TAG, "WebSocket disconnected: $reason")
+                }
+
+                override fun onError(error: String) {
+                    Log.e(TAG, "WebSocket connection error: $error")
+                    // Resume with error if WebSocket fails to connect
+                    if (!isResumed) {
+                        isResumed = true
+                        continuation.resume(buildMap<String, Any> {
+                            put("error", "WebSocket connection failed: $error")
+                            put("username", deviceIdAndUsername?.second ?: "")
+                        })
+                    }
+                }
+            })
+
+            try {
+                // Initialize and connect WebSocket
+                webSocketClient.init(getAccountCode(context), deviceIdAndUsername?.first ?: "")
+                webSocketClient.connectAndSubscribe()
+                WebSocketHolder.client = webSocketClient
+
+
+            } catch (e: Exception) {
+                Log.e(TAG, "Error initializing WebSocket: ${e.message}")
+                if (!isResumed) {
+                    isResumed = true
+                    continuation.resume(buildMap<String, Any> {
+                        put("error", "Failed to initialize WebSocket: ${e.message}")
+                        put("username", deviceIdAndUsername?.second ?: "")
+                    })
+                }
+            }
+        }
+
+        private fun showQrDialogAfterConnection(
+            context: Context,
+            qrCode: QrCode,
+            continuation: Continuation<Map<String, Any>>,
+            deviceIdAndUsername: Pair<String?, String?>?,
+            onResumed: (Boolean) -> Unit
+        ) {
+            val qrData = qrCode.toJsonString()
+            val qrDialogManager = QrDialogManager(context)
+
+            qrDialogManager.showQrDialog(qrCode, qrData) { success ->
+                onResumed(true)
+                if (success) {
+                    Log.d(TAG, "Dialog shown successfully")
+                    continuation.resume(buildMap<String, Any> {
+                        put("success", true)
+                        put("username", deviceIdAndUsername?.second ?: "")
+                    })
+                } else {
+                    val errorMessage = "Fallo al mostrar el diálogo"
+                    Log.e(TAG, errorMessage)
+                    continuation.resume(buildMap<String, Any> {
+                        put("error", errorMessage)
+                        put("username", deviceIdAndUsername?.second ?: "")
+                    })
+                }
+            }
         }
 
         @RequiresPermission(Manifest.permission.GET_ACCOUNTS)
@@ -266,31 +322,3 @@ class PurchaseAndVerify {
         }
     }
     }
-
-
-fun parseQrString(qrString: String): Qr? {
-    return try {
-        // Remove the outer braces and split by commas
-        val cleanString = qrString.trim('{', '}')
-        val pairs = cleanString.split(",")
-
-        val dataMap = mutableMapOf<String, String>()
-
-        for (pair in pairs) {
-            val keyValue = pair.split(":", limit = 2)
-            if (keyValue.size == 2) {
-                dataMap[keyValue[0].trim()] = keyValue[1].trim()
-            }
-        }
-
-        Qr(
-            idTransaccion = dataMap["id_transaccion"] ?: "",
-            importe = dataMap["importe"]?.toDoubleOrNull() ?: 0.0,
-            moneda = dataMap["moneda"] ?: "",
-            numeroProveedor = dataMap["numero_proveedor"] ?: "",
-            version = dataMap["version"] ?: ""
-        )
-    } catch (e: Exception) {
-        null
-    }
-}

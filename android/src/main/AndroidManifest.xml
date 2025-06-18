@@ -12,16 +12,20 @@
     <!-- SHOW DIALOG OVERLAY PERMISSION   -->
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
 
+    <!-- ACCESS INTERNET PERMISSION   -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
     <application>
         <!-- QR Dialog Activity -->
         <activity
             android:name=".QrDialogActivity"
             android:theme="@android:style/Theme.DeviceDefault.Light.Dialog"
             android:exported="false"
-            android:launchMode="singleInstance"
+            android:launchMode="singleTop"
             android:excludeFromRecents="true"
             android:taskAffinity=""
-            android:finishOnTaskLaunch="true" />
+            android:stateNotNeeded="false"
+            android:noHistory="false" />
     </application>
 
 </manifest>

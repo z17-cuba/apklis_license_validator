@@ -1,9 +1,13 @@
 package cu.uci.android.apklis_license_validator
 
+import android.content.Context
 import android.util.Log
-import kotlinx.coroutines.*
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
@@ -11,17 +15,25 @@ import okhttp3.WebSocket
 import okhttp3.WebSocketListener
 import okio.ByteString
 import okio.ByteString.Companion.encodeUtf8
+import org.json.JSONObject
+import java.net.SocketException
+import java.net.SocketTimeoutException
 import java.util.concurrent.TimeUnit
 import kotlin.random.Random
 
+object WebSocketHolder {
+    var client: WebSocketClient? = null
+}
 
 class WebSocketClient(
-    private val listener: WebSocketEventListener? = null
+    private val listener: WebSocketEventListener? = null,
+    private val context: Context? = null
 ) {
     private var webSocket: WebSocket? = null
     private var okHttpClient: OkHttpClient? = null
     private var pingJob: Job? = null
     private var connectionJob: Job? = null
+    private var reconnectJob: Job? = null
     private var deviceId: String? = null
     private var code: String? = null
 
@@ -29,17 +41,30 @@ class WebSocketClient(
 
     private val pendingMessages = mutableListOf<String>()
 
+    // Reconnection parameters
+    private var reconnectAttempts = 0
+    private var isReconnecting = false
+    private var shouldReconnect = true
+
     companion object {
         private const val PING_INTERVAL = 30_000L // 30 seconds
         private const val CONNECTION_TIMEOUT = 10_000L // 10 seconds
         private const val READ_TIMEOUT = 30_000L // 30 seconds
         private const val TAG = "WebSocketManager"
         private const val WS_URL = "wss://pubsub.mprc.cu"
+
+        // Reconnection settings
+        private const val MAX_RECONNECT_ATTEMPTS = 10
+        private const val INITIAL_RECONNECT_DELAY = 1000L // 1 second
+        private const val MAX_RECONNECT_DELAY = 30000L // 30 seconds
+        private const val BACKOFF_MULTIPLIER = 1.5
     }
 
     fun init(code: String, deviceId: String) {
         this.deviceId = deviceId
         this.code = code
+        this.shouldReconnect = true
+        this.reconnectAttempts = 0
         initializeHttpClient()
     }
 
@@ -48,12 +73,18 @@ class WebSocketClient(
             .connectTimeout(CONNECTION_TIMEOUT, TimeUnit.MILLISECONDS)
             .readTimeout(READ_TIMEOUT, TimeUnit.MILLISECONDS)
             .writeTimeout(READ_TIMEOUT, TimeUnit.MILLISECONDS)
+            .retryOnConnectionFailure(true) // Enable automatic retry
             .build()
     }
 
     fun connectAndSubscribe() {
         if (_connectionState.value.isConnected) {
             listener?.onError("Already connected")
+            return
+        }
+
+        if (isReconnecting) {
+            Log.d(TAG, "Reconnection already in progress")
             return
         }
 
@@ -65,20 +96,23 @@ class WebSocketClient(
 
                 webSocket = okHttpClient?.newWebSocket(request, object : WebSocketListener() {
                     override fun onOpen(webSocket: WebSocket, response: Response) {
+                        Log.i(TAG, "WebSocket connection established successfully")
                         _connectionState.value = ConnectionState(isConnected = true)
+                        reconnectAttempts = 0 // Reset reconnect attempts on successful connection
+                        isReconnecting = false
                         listener?.onConnected()
 
                         // Send CONNECT message
                         sendConnectMessage()
 
                         // Subscribe to the user channel after connection
-                        subscribeToChannel(code ?: "", deviceId ?: "")
+                       subscribeToChannel(code ?: "", deviceId ?: "")
 
                         // Start ping-pong mechanism
-                        startPingPong()
+                       startPingPong()
 
                         // Send any pending messages
-                        sendPendingMessages()
+                       sendPendingMessages()
                     }
 
                     override fun onMessage(webSocket: WebSocket, text: String) {
@@ -90,22 +124,50 @@ class WebSocketClient(
                     }
 
                     override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
+                        Log.w(TAG, "WebSocket closing: code=$code, reason=$reason")
                         _connectionState.value = ConnectionState(isConnected = false)
                         listener?.onDisconnected(reason)
                     }
 
                     override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
+                        Log.i(TAG, "WebSocket closed: code=$code, reason=$reason")
                         cleanup()
+
+                        // Schedule reconnection if needed
+                        if (shouldReconnect && code != 1000) { // 1000 = normal closure
+                            scheduleReconnect("Connection closed unexpectedly: $reason")
+                        }
                     }
 
                     override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
+                        Log.e(TAG, "WebSocket connection failed", t)
+
+                        val errorMessage = when (t) {
+                            is SocketTimeoutException -> "Connection timeout - server may be unavailable"
+                            is SocketException -> when {
+                                t.message?.contains("Software caused connection abort") == true ->
+                                    "Network connection interrupted"
+                                t.message?.contains("Connection reset") == true ->
+                                    "Server connection reset"
+                                else -> "Network socket error: ${t.message}"
+                            }
+                            else -> "Connection failed: ${t.message ?: t.javaClass.simpleName}"
+                        }
+
                         _connectionState.value = ConnectionState(
                             isConnected = false,
-                            error = t.message
+                            error = errorMessage
                         )
-                        listener?.onError(t.message ?: "Connection failed")
+
+                        listener?.onError(errorMessage)
                         cleanup()
+
+                        // Schedule reconnection for recoverable errors
+                        if (shouldReconnect && isRecoverableError(t)) {
+                            scheduleReconnect(errorMessage)
+                        }
                     }
+
                 })
 
             } catch (e: Exception) {
@@ -114,13 +176,76 @@ class WebSocketClient(
                     error = e.message
                 )
                 listener?.onError(e.message ?: "Failed to connect")
+
+                if (shouldReconnect) {
+                    scheduleReconnect("Setup failed: ${e.message}")
+                }
             }
+        }
+    }
+
+
+    private fun isRecoverableError(throwable: Throwable): Boolean {
+        return when (throwable) {
+            is SocketTimeoutException,
+            is SocketException -> true
+            else -> throwable.message?.let { message ->
+                message.contains("Software caused connection abort") ||
+                        message.contains("Connection reset") ||
+                        message.contains("Network is unreachable") ||
+                        message.contains("Connection refused")
+            } ?: false
+        }
+    }
+
+    private fun scheduleReconnect(reason: String) {
+        if (!shouldReconnect || isReconnecting) {
+            return
+        }
+
+        if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+            Log.e(TAG, "Maximum reconnection attempts reached ($MAX_RECONNECT_ATTEMPTS)")
+            listener?.onError("Failed to reconnect after $MAX_RECONNECT_ATTEMPTS attempts")
+            return
+        }
+
+        isReconnecting = true
+        reconnectAttempts++
+
+        // Calculate delay with exponential backoff
+        val delay = minOf(
+            INITIAL_RECONNECT_DELAY * Math.pow(BACKOFF_MULTIPLIER, reconnectAttempts.toDouble()).toLong(),
+            MAX_RECONNECT_DELAY
+        )
+
+        Log.w(TAG, "Scheduling reconnection attempt $reconnectAttempts/$MAX_RECONNECT_ATTEMPTS in ${delay}ms. Reason: $reason")
+
+        reconnectJob = CoroutineScope(Dispatchers.IO).launch {
+            delay(delay)
+
+            if (shouldReconnect && !_connectionState.value.isConnected) {
+                Log.d(TAG, "Attempting reconnection $reconnectAttempts/$MAX_RECONNECT_ATTEMPTS")
+                connectAndSubscribe()
+            }
+        }
+    }
+
+
+    fun reconnect() {
+        Log.d(TAG, "Manual reconnection requested")
+        shouldReconnect = true
+        reconnectAttempts = 0
+        disconnect()
+
+        CoroutineScope(Dispatchers.IO).launch {
+            delay(1000) // Short delay before reconnecting
+            connectAndSubscribe()
         }
     }
 
     private fun sendConnectMessage() {
         // 1. Enviar mensaje CONNECT (requerido por NATS)
-        val connectMsg : String = "CONNECT {\"verbose\":false,\"pedantic\":false,\"tls_required\":false}\r\n";
+        val connectMsg = "CONNECT {\"verbose\":false,\"pedantic\":false,\"tls_required\":false}\r\n"
         webSocket?.send(connectMsg);
         Log.d(TAG, "CONNECT enviado");
     }
@@ -159,13 +284,20 @@ class WebSocketClient(
             message.startsWith("-ERR ") -> {
                 // Error message
                 Log.e(TAG, "Server returned error: ${message.substring(5)}")
+                // Consider reconnecting on stale connection error
+                if (message.contains("Stale Connection")) {
+                    Log.w(TAG, "Connection is stale, attempting to reconnect...")
+                    reconnect()
+                }
             }
             message.startsWith("PONG") -> {
                 // Response to our PING
                 Log.d(TAG, "Received PONG from server")
-                _connectionState.value = _connectionState.value.copy(
-                    lastPingTime = System.currentTimeMillis()
-                )
+            }
+            message.startsWith("PING") -> {
+                // Response to our PING
+                Log.d(TAG, "Received PING from server")
+                sendPong()
             }
             else -> {
                 // Unknown message format
@@ -205,19 +337,20 @@ class WebSocketClient(
             // Try to parse payload as JSON if it looks like JSON
             if (isJsonString(payload)) {
                 try {
-                  /*
-                    when (natMessage.type) {
-                        "info", "reply", "suggest", "payment"-> {
-                            Log.d(TAG, "Notification message received: ${natMessage.type}")
+                    val json = JSONObject(payload)
+                    val type = json.optString("type")
 
-                        }
-                       else -> {
-                            Log.d(TAG, "Unhandled message type: ${natMessage.type}")
-                        }
-                    }*/
 
-                    Log.d(TAG, "Message payload is JSON: $payload")
-                    // Handle JSON payload - implement specific logic here
+                    if (type == "payment-license") {
+                        val messageObj = json.optJSONObject("message")
+                        val licenseName = messageObj?.optString("name")
+
+                        Log.d(TAG, "License name: $licenseName")
+                        // You can return or process `licenseName` here
+                    } else {
+                        Log.d(TAG, "Unhandled message type: $type")
+                    }
+
                 } catch (e: Exception) {
                     Log.e(TAG, "Failed to parse payload as JSON: $e")
                 }
@@ -246,19 +379,19 @@ class WebSocketClient(
     }
 
    private fun subscribeToChannel(code: String, channel: String) {
-       // 2. Suscribirse al canal (formato: SUB <canal> <sid>\r\n)
-       // "1" es un ID de suscripción arbitrario
+       val subscriptionId = generateId()
+       val channelName = "APKLIS_DEVICES_TEST.$code.$channel"
+       val subMsg = "SUB $channelName $subscriptionId\r\n"
 
-       //TODO remover el "_DEV" si es para PROD
-       val subMsg : String = "SUB APKLIS_DEVICES_DEV.$code.$channel\r\n";
-        if (_connectionState.value.isConnected) {
-            webSocket?.send(subMsg);
-            Log.d(TAG, "Suscripción enviada: " + subMsg.trim());
-        } else {
-            pendingMessages.add(subMsg)
-        }
-    }
+       Log.d(TAG, "Subscribing to channel: $channelName")
 
+       if (_connectionState.value.isConnected) {
+           webSocket?.send(subMsg)
+           Log.d(TAG, "Subscription sent: ${subMsg.trim()}")
+       } else {
+           pendingMessages.add(subMsg)
+       }
+   }
 
     private fun sendPendingMessages() {
         pendingMessages.forEach { message ->
@@ -279,9 +412,15 @@ class WebSocketClient(
     }
 
     private fun sendPing() {
-        val pingMsg = "PING\r\n".encodeUtf8()
-        webSocket?.send(pingMsg);
+        val pingMsg = "PING\r\n"
+        webSocket?.send(pingMsg)
         Log.d(TAG, "Sent PING message")
+    }
+
+    private fun sendPong() {
+        val pongMsg = "PONG\r\n"
+        webSocket?.send(pongMsg)
+        Log.d(TAG, "Sent PONG response")
     }
 
     fun disconnect() {

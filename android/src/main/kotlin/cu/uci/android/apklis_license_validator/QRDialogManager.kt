@@ -13,7 +13,6 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
-import android.net.Uri
 import android.util.Log
 import android.view.LayoutInflater
 import android.widget.Button
@@ -21,36 +20,52 @@ import android.widget.ImageView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.core.content.ContextCompat
-import cu.uci.android.apklis_license_validator.models.Qr
+import cu.uci.android.apklis_license_validator.models.QrCode
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.qrcode.QRCodeWriter
 import androidx.core.graphics.createBitmap
-import androidx.core.graphics.set
 import androidx.core.graphics.scale
+import androidx.core.graphics.set
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 // QR Dialog Activity
 @Suppress("DEPRECATION")
-class QrDialogActivity : Activity() {
+class QrDialogActivity : Activity(), WebSocketEventListener {
     companion object {
         private const val TAG = "QrDialogActivity"
+        private const val WEBSOCKET_CHECK_DELAY = 2000L // 2 seconds
+        //  private const val TRANSFERMOVILPKGNAME  = "cu.etecsa.cubacel.tr.tm"
+        //TODO borrar este packageName
+        const val TRANSFERMOVILPKGNAME = "cu.etecsa.cubacel.tr.tmtest"
     }
 
-    private lateinit var qr: Qr
+    private lateinit var qr: QrCode
     private lateinit var qrData: String
+    private var dialog: AlertDialog? = null
+    private var webSocketClient: WebSocketClient? = null
+    private var deviceId: String? = null
+    private var code: String? = null
+    private var isWebSocketConnected = false
+    private var checkConnectionJob: Job? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        Log.d(TAG, "onCreate() called")
 
         // Get QR from intent
         qr = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-             intent.getParcelableExtra("qr", Qr::class.java)
-         } else {
-             intent.getParcelableExtra("qr")
-         } ?: run {
-             Log.e(TAG, "No QR received")
-             finish()
-             return
-         }
+            intent.getParcelableExtra("qr", QrCode::class.java)
+        } else {
+            intent.getParcelableExtra("qr")
+        } ?: run {
+            Log.e(TAG, "No QR received")
+            finish()
+            return
+        }
 
         // Get QR data from intent
        if (intent.getStringExtra("qr_data") != null) {
@@ -95,13 +110,14 @@ class QrDialogActivity : Activity() {
 
         // Set button listeners
         openAppButton.setOnClickListener {
-            openTransfermovil( qrData)
+            openTransfermovil(qrData)
             dialog.dismiss()
             finish()
         }
 
         closeButton.setOnClickListener {
             dialog.dismiss()
+            WebSocketClient().disconnect()
             finish()
         }
 
@@ -114,16 +130,13 @@ class QrDialogActivity : Activity() {
     }
 
     private fun openTransfermovil(qrData: String) {
-//        val transfermovilPackageName = "cu.etecsa.cubacel.tr.tm"
-        //TODO borrar este packageName
-        val transfermovilPackageName = "cu.etecsa.cubacel.tr.tmtest"
 
         try {
             val sendIntent = Intent().apply {
                 action = Intent.ACTION_SEND
                 putExtra(Intent.EXTRA_TEXT, qrData)
                 type = "text/plain"
-                setPackage(transfermovilPackageName)
+                setPackage(TRANSFERMOVILPKGNAME)
             }
 
             startActivity(sendIntent)
@@ -136,6 +149,118 @@ class QrDialogActivity : Activity() {
         }
     }
 
+    override fun onStart() {
+        super.onStart()
+        Log.d(TAG, "onStart() called")
+        // Activity is visible to user
+    }
+
+    override fun onResume() {
+        super.onResume()
+        Log.d(TAG, "onResume() called - Activity is in foreground and interactive")
+
+        // Check WebSocket connection when resuming
+        checkWebSocketConnection()
+    }
+
+    override fun onPause() {
+        super.onPause()
+        Log.d(TAG, "onPause() called - Activity is no longer in foreground")
+
+        // Cancel any pending connection checks
+        checkConnectionJob?.cancel()
+    }
+
+    override fun onStop() {
+        super.onStop()
+        Log.d(TAG, "onStop() called - Activity is no longer visible")
+
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        Log.d(TAG, "onDestroy() called - Activity is being destroyed")
+
+        // Clean up resources
+        cleanup()
+    }
+
+    override fun onRestart() {
+        super.onRestart()
+        Log.d(TAG, "onRestart() called - Activity is restarting")
+
+        // Re-check WebSocket connection when restarting
+        checkWebSocketConnection()
+    }
+
+    private fun checkWebSocketConnection() {
+        checkConnectionJob?.cancel()
+        checkConnectionJob = CoroutineScope(Dispatchers.IO).launch {
+            delay(WEBSOCKET_CHECK_DELAY)
+
+            if (!isWebSocketConnected && webSocketClient != null) {
+                Log.w(TAG, "WebSocket not connected, attempting reconnection")
+                webSocketClient?.reconnect()
+            } else {
+                Log.d(TAG, "WebSocket connection is healthy")
+            }
+        }
+    }
+
+    private fun cleanup() {
+        dialog?.dismiss()
+        dialog = null
+        checkConnectionJob?.cancel()
+
+        // Don't destroy WebSocket here if we want to keep it alive
+        // Only clean up if this is the final destruction
+        if (isFinishing) {
+            Log.d(TAG, "Activity is finishing, cleaning up WebSocket")
+            webSocketClient?.disconnect()
+            WebSocketHolder.client = null
+        }
+    }
+
+
+    // WebSocket event listeners
+    override fun onConnected() {
+        Log.d(TAG, "WebSocket connected")
+        isWebSocketConnected = true
+        runOnUiThread {
+            // Update UI to show connection status if needed
+            Toast.makeText(this, "Conectado al servidor", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    override fun onDisconnected(reason: String?) {
+        Log.d(TAG, "WebSocket disconnected: $reason")
+        isWebSocketConnected = false
+        runOnUiThread {
+            // Update UI to show disconnection if needed
+            Toast.makeText(this, "Desconectado del servidor", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    override fun onError(error: String) {
+        Log.e(TAG, "WebSocket error: $error")
+        isWebSocketConnected = false
+        runOnUiThread {
+            Toast.makeText(this, "Error de conexión: $error", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    // Utility methods
+    private fun isActivityInForeground(): Boolean {
+        return !isFinishing && !isDestroyed
+    }
+
+    // Override onBackPressed to handle back button properly
+    override fun onBackPressed() {
+        Log.d(TAG, "Back button pressed")
+        super.onBackPressed()
+        finish()
+    }
+
 }
 
 class QrDialogManager(private val context: Context) {
@@ -143,7 +268,7 @@ class QrDialogManager(private val context: Context) {
         private const val TAG = "QrDialogManager"
     }
 
-    fun showQrDialog(qr: Qr, data: String, callback: (Boolean) -> Unit) {
+    fun showQrDialog(qr: QrCode, data: String, callback: (Boolean) -> Unit) {
         Handler(Looper.getMainLooper()).post {
             try {
                 val intent = Intent(context, QrDialogActivity::class.java).apply {
@@ -160,20 +285,21 @@ class QrDialogManager(private val context: Context) {
         }
     }
 }
+
 object QrCodeGenerator {
     private const val TAG = "QrCodeGenerator"
 
-    fun generateQrCode(content: String, size: Int = 512, logoBitmap: Bitmap? = null): Bitmap {
+    private fun generateQrCode(content: String, size: Int = 512, logoBitmap: Bitmap? = null): Bitmap {
         return try {
             val writer = QRCodeWriter()
             val bitMatrix = writer.encode(content, BarcodeFormat.QR_CODE, size, size)
             val width = bitMatrix.width
             val height = bitMatrix.height
-            val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.RGB_565)
+            val bitmap = createBitmap(width, height, Bitmap.Config.RGB_565)
 
             for (x in 0 until width) {
                 for (y in 0 until height) {
-                    bitmap.setPixel(x, y, if (bitMatrix[x, y]) Color.BLACK else Color.WHITE)
+                    bitmap[x, y] = if (bitMatrix[x, y]) Color.BLACK else Color.WHITE
                 }
             }
 

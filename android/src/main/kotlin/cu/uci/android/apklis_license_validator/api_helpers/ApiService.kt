@@ -3,7 +3,7 @@ package cu.uci.android.apklis_license_validator.api_helpers
 import com.google.gson.Gson
 import cu.uci.android.apklis_license_validator.models.LicenseRequest
 import cu.uci.android.apklis_license_validator.models.PaymentRequest
-import cu.uci.android.apklis_license_validator.models.PaymentResponse
+import cu.uci.android.apklis_license_validator.models.QrCode
 import cu.uci.android.apklis_license_validator.models.VerifyLicenseResponse
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -34,7 +34,7 @@ class ApiService {
 
     /// Make a request to the Apklis API to request the TF payment QR code for the payment of licenses
     //  Display the QR code or return an error/exception status if the request fails
-    suspend fun payLicenseWithTF(request: PaymentRequest, licenseUUID: String, accessToken: String): ApiResult<PaymentResponse> {
+    suspend fun payLicenseWithTF(request: PaymentRequest, licenseUUID: String, accessToken: String): ApiResult<QrCode> {
         return withContext(Dispatchers.IO) {
             try {
                 val jsonBody = gson.toJson(request)
@@ -56,7 +56,7 @@ class ApiService {
                         if (responseBody != null) {
                             try {
                                 val headers = response.headers.toMap()
-                                val payResponse = gson.fromJson(responseBody, PaymentResponse::class.java)
+                                val payResponse = gson.fromJson(responseBody, QrCode::class.java)
                                 ApiResult.Success(payResponse, headers)
                             } catch (e: Exception) {
                                 ApiResult.Exception(e)
