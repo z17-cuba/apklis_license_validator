@@ -18,7 +18,6 @@ import android.view.LayoutInflater
 import android.widget.Button
 import android.widget.ImageView
 import android.widget.TextView
-import android.widget.Toast
 import androidx.core.content.ContextCompat
 import cu.uci.android.apklis_license_validator.models.QrCode
 import com.google.zxing.BarcodeFormat
@@ -47,8 +46,6 @@ class QrDialogActivity : Activity(), WebSocketEventListener {
     private lateinit var qrData: String
     private var dialog: AlertDialog? = null
     private var webSocketClient: WebSocketClient? = null
-    private var deviceId: String? = null
-    private var code: String? = null
     private var isWebSocketConnected = false
     private var checkConnectionJob: Job? = null
 
@@ -68,32 +65,39 @@ class QrDialogActivity : Activity(), WebSocketEventListener {
         }
 
         // Get QR data from intent
-       if (intent.getStringExtra("qr_data") != null) {
-           qrData = intent.getStringExtra("qr_data")!!
-        } else {
-           Log.e(TAG, "No QR Data received")
-           finish()
-           return
-       }
+        qrData = intent.getStringExtra("qr_data") ?: run {
+            Log.e(TAG, "No QR Data received")
+            finish()
+            return
+        }
 
+        // Get the existing WebSocket client
+        webSocketClient = WebSocketHolder.client
+
+        // Set up WebSocket client to listen for payment confirmations
+        setupWebSocketForPayment()
 
         // Set dialog theme
         setTheme(android.R.style.Theme_DeviceDefault_Light_Dialog)
 
         // Create and show dialog
+        showDialog()
+
+    }
+
+    private fun showDialog() {
         // Inflate custom dialog layout
         val dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_qr_code, null)
 
         // Find views
         val amountTextView = dialogView.findViewById<TextView>(R.id.amount_text)
-        "Monto: $${qr.importe} CUP".also { amountTextView.text = it }
+        amountTextView.text = "Monto: $${qr.importe} CUP"
+
         val qrImageView = dialogView.findViewById<ImageView>(R.id.qr_image_view)
         val openAppButton = dialogView.findViewById<Button>(R.id.open_app_button)
         val closeButton = dialogView.findViewById<Button>(R.id.close_button)
 
-
         // Generate and display QR code
-        //val qrBitmap = QrCodeGenerator.generateQrCode(qrData)
         val qrWithLogo = QrCodeGenerator.generateQrCodeWithSvg(
             content = qrData,
             size = 512,
@@ -103,30 +107,44 @@ class QrDialogActivity : Activity(), WebSocketEventListener {
         qrImageView.setImageBitmap(qrWithLogo)
 
         // Create dialog
-        val dialog = AlertDialog.Builder(this)
+        dialog = AlertDialog.Builder(this)
             .setView(dialogView)
             .setCancelable(true)
             .create()
 
+        // Register dialog with QrDialogManager
+        QrDialogManager.setActiveDialog(dialog) // Add this line
+
         // Set button listeners
         openAppButton.setOnClickListener {
             openTransfermovil(qrData)
-            dialog.dismiss()
-            finish()
         }
 
         closeButton.setOnClickListener {
-            dialog.dismiss()
-            WebSocketClient().disconnect()
+            dialog?.dismiss()
+            QrDialogManager.notifyDialogClosed()
+            webSocketClient?.disconnect()
             finish()
         }
 
         // Finish activity when dialog is dismissed
-        dialog.setOnDismissListener {
+        dialog?.setOnDismissListener {
+            QrDialogManager.notifyDialogClosed()
             finish()
         }
 
-        dialog.show()
+        dialog?.show()
+    }
+
+
+    private fun setupWebSocketForPayment() {
+        // Connect to existing WebSocket or create new one if needed
+        webSocketClient?.let { client ->
+            // If WebSocket is not connected, try to reconnect
+            if (!isWebSocketConnected) {
+                client.reconnect()
+            }
+        }
     }
 
     private fun openTransfermovil(qrData: String) {
@@ -142,25 +160,21 @@ class QrDialogActivity : Activity(), WebSocketEventListener {
             startActivity(sendIntent)
         } catch (e: ActivityNotFoundException) {
             Log.e(TAG, "Transfermóvil app not installed", e)
-            Toast.makeText(this, "No se encuentra instalada la aplicación Transfermóvil", Toast.LENGTH_SHORT).show()
         } catch (e: Exception) {
             Log.e(TAG, "Error opening Transfermóvil app", e)
-            Toast.makeText(this, "No se pudo abrir la aplicación Transfermóvil", Toast.LENGTH_SHORT).show()
         }
-    }
-
-    override fun onStart() {
-        super.onStart()
-        Log.d(TAG, "onStart() called")
-        // Activity is visible to user
     }
 
     override fun onResume() {
         super.onResume()
         Log.d(TAG, "onResume() called - Activity is in foreground and interactive")
 
-        // Check WebSocket connection when resuming
-        checkWebSocketConnection()
+        // Only check connection if we have a WebSocket client and it's not reconnecting
+        webSocketClient?.let { client ->
+            if (!client.isReconnecting()) {
+                checkWebSocketConnection()
+            }
+        }
     }
 
     override fun onPause() {
@@ -171,12 +185,6 @@ class QrDialogActivity : Activity(), WebSocketEventListener {
         checkConnectionJob?.cancel()
     }
 
-    override fun onStop() {
-        super.onStop()
-        Log.d(TAG, "onStop() called - Activity is no longer visible")
-
-    }
-
     override fun onDestroy() {
         super.onDestroy()
         Log.d(TAG, "onDestroy() called - Activity is being destroyed")
@@ -185,24 +193,19 @@ class QrDialogActivity : Activity(), WebSocketEventListener {
         cleanup()
     }
 
-    override fun onRestart() {
-        super.onRestart()
-        Log.d(TAG, "onRestart() called - Activity is restarting")
-
-        // Re-check WebSocket connection when restarting
-        checkWebSocketConnection()
-    }
-
     private fun checkWebSocketConnection() {
         checkConnectionJob?.cancel()
         checkConnectionJob = CoroutineScope(Dispatchers.IO).launch {
             delay(WEBSOCKET_CHECK_DELAY)
 
-            if (!isWebSocketConnected && webSocketClient != null) {
-                Log.w(TAG, "WebSocket not connected, attempting reconnection")
-                webSocketClient?.reconnect()
-            } else {
-                Log.d(TAG, "WebSocket connection is healthy")
+            // Only attempt reconnection if WebSocket exists but is not connected
+            webSocketClient?.let { client ->
+                if (!isWebSocketConnected && !client.isReconnecting()) {
+                    Log.w(TAG, "WebSocket not connected, attempting reconnection")
+                    client.reconnect()
+                } else {
+                    Log.d(TAG, "WebSocket connection is healthy or reconnection in progress")
+                }
             }
         }
     }
@@ -212,12 +215,9 @@ class QrDialogActivity : Activity(), WebSocketEventListener {
         dialog = null
         checkConnectionJob?.cancel()
 
-        // Don't destroy WebSocket here if we want to keep it alive
-        // Only clean up if this is the final destruction
+        // Don't destroy WebSocket here - let it stay alive for reconnection
         if (isFinishing) {
-            Log.d(TAG, "Activity is finishing, cleaning up WebSocket")
-            webSocketClient?.disconnect()
-            WebSocketHolder.client = null
+            Log.d(TAG, "Activity is finishing")
         }
     }
 
@@ -226,39 +226,19 @@ class QrDialogActivity : Activity(), WebSocketEventListener {
     override fun onConnected() {
         Log.d(TAG, "WebSocket connected")
         isWebSocketConnected = true
-        runOnUiThread {
-            // Update UI to show connection status if needed
-            Toast.makeText(this, "Conectado al servidor", Toast.LENGTH_SHORT).show()
-        }
+
     }
 
     override fun onDisconnected(reason: String?) {
         Log.d(TAG, "WebSocket disconnected: $reason")
         isWebSocketConnected = false
-        runOnUiThread {
-            // Update UI to show disconnection if needed
-            Toast.makeText(this, "Desconectado del servidor", Toast.LENGTH_SHORT).show()
-        }
+
     }
 
     override fun onError(error: String) {
         Log.e(TAG, "WebSocket error: $error")
         isWebSocketConnected = false
-        runOnUiThread {
-            Toast.makeText(this, "Error de conexión: $error", Toast.LENGTH_SHORT).show()
-        }
-    }
 
-    // Utility methods
-    private fun isActivityInForeground(): Boolean {
-        return !isFinishing && !isDestroyed
-    }
-
-    // Override onBackPressed to handle back button properly
-    override fun onBackPressed() {
-        Log.d(TAG, "Back button pressed")
-        super.onBackPressed()
-        finish()
     }
 
 }
@@ -266,9 +246,40 @@ class QrDialogActivity : Activity(), WebSocketEventListener {
 class QrDialogManager(private val context: Context) {
     companion object {
         private const val TAG = "QrDialogManager"
+        private var activePaymentCallback: PaymentResultCallback? = null
+        private var activeDialog: AlertDialog? = null
+
+        fun setActivePaymentCallback(callback: PaymentResultCallback?) {
+            activePaymentCallback = callback
+        }
+
+        fun setActiveDialog(dialog: AlertDialog?) {
+            activeDialog = dialog
+        }
+
+        fun notifyPaymentCompleted(licenseName: String) {
+            Log.d(TAG, "Notifying payment completed: $licenseName")
+
+            // Close the dialog directly without calling notifyDialogClosed
+            activeDialog?.dismiss()
+            activeDialog = null
+
+            activePaymentCallback?.onPaymentCompleted(licenseName)
+            activePaymentCallback = null // Clear callback after use
+        }
+
+        fun notifyDialogClosed() {
+            Log.d(TAG, "Notifying dialog closed")
+            activePaymentCallback?.onDialogClosed()
+            activePaymentCallback = null
+            activeDialog = null // Clear dialog reference
+        }
     }
 
-    fun showQrDialog(qr: QrCode, data: String, callback: (Boolean) -> Unit) {
+    fun showQrDialog(qr: QrCode,
+                     data: String,
+                     callback: (Boolean) -> Unit
+    ) {
         Handler(Looper.getMainLooper()).post {
             try {
                 val intent = Intent(context, QrDialogActivity::class.java).apply {
@@ -284,6 +295,7 @@ class QrDialogManager(private val context: Context) {
             }
         }
     }
+
 }
 
 object QrCodeGenerator {

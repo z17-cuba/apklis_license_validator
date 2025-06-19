@@ -14,11 +14,11 @@ import okhttp3.Response
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
 import okio.ByteString
-import okio.ByteString.Companion.encodeUtf8
 import org.json.JSONObject
 import java.net.SocketException
 import java.net.SocketTimeoutException
 import java.util.concurrent.TimeUnit
+import kotlin.math.pow
 import kotlin.random.Random
 
 object WebSocketHolder {
@@ -53,12 +53,15 @@ class WebSocketClient(
         private const val TAG = "WebSocketManager"
         private const val WS_URL = "wss://pubsub.mprc.cu"
 
+
         // Reconnection settings
         private const val MAX_RECONNECT_ATTEMPTS = 10
         private const val INITIAL_RECONNECT_DELAY = 1000L // 1 second
         private const val MAX_RECONNECT_DELAY = 30000L // 30 seconds
         private const val BACKOFF_MULTIPLIER = 1.5
     }
+
+    fun isReconnecting(): Boolean = isReconnecting
 
     fun init(code: String, deviceId: String) {
         this.deviceId = deviceId
@@ -79,7 +82,7 @@ class WebSocketClient(
 
     fun connectAndSubscribe() {
         if (_connectionState.value.isConnected) {
-            listener?.onError("Already connected")
+            Log.d(TAG, "Already connected, skipping connection attempt")
             return
         }
 
@@ -142,6 +145,9 @@ class WebSocketClient(
                     override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
                         Log.e(TAG, "WebSocket connection failed", t)
 
+                        // Reset reconnecting flag on failure
+                        isReconnecting = false
+
                         val errorMessage = when (t) {
                             is SocketTimeoutException -> "Connection timeout - server may be unavailable"
                             is SocketException -> when {
@@ -199,47 +205,71 @@ class WebSocketClient(
     }
 
     private fun scheduleReconnect(reason: String) {
-        if (!shouldReconnect || isReconnecting) {
+        if (!shouldReconnect) {
+            Log.d(TAG, "Reconnection disabled, not scheduling")
             return
         }
 
         if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
             Log.e(TAG, "Maximum reconnection attempts reached ($MAX_RECONNECT_ATTEMPTS)")
+            isReconnecting = false // Reset flag when giving up
             listener?.onError("Failed to reconnect after $MAX_RECONNECT_ATTEMPTS attempts")
             return
         }
 
-        isReconnecting = true
+
+        // Cancel any existing reconnection job
+        reconnectJob?.cancel()
         reconnectAttempts++
+        isReconnecting = true
 
         // Calculate delay with exponential backoff
         val delay = minOf(
-            INITIAL_RECONNECT_DELAY * Math.pow(BACKOFF_MULTIPLIER, reconnectAttempts.toDouble()).toLong(),
+            INITIAL_RECONNECT_DELAY * BACKOFF_MULTIPLIER.pow(reconnectAttempts.toDouble()).toLong(),
             MAX_RECONNECT_DELAY
         )
 
         Log.w(TAG, "Scheduling reconnection attempt $reconnectAttempts/$MAX_RECONNECT_ATTEMPTS in ${delay}ms. Reason: $reason")
 
         reconnectJob = CoroutineScope(Dispatchers.IO).launch {
-            delay(delay)
+            try {
+                delay(delay)
 
-            if (shouldReconnect && !_connectionState.value.isConnected) {
-                Log.d(TAG, "Attempting reconnection $reconnectAttempts/$MAX_RECONNECT_ATTEMPTS")
-                connectAndSubscribe()
+                if (shouldReconnect && !_connectionState.value.isConnected) {
+                    Log.d(TAG, "Executing reconnection attempt $reconnectAttempts/$MAX_RECONNECT_ATTEMPTS")
+                    connectAndSubscribe()
+                } else {
+                    Log.d(TAG, "Skipping reconnection - conditions not met")
+                    isReconnecting = false
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error in reconnection job", e)
+                isReconnecting = false
             }
         }
     }
 
 
     fun reconnect() {
+        if (isReconnecting || _connectionState.value.isConnected) {
+            Log.d(TAG, "Skipping reconnection - already connected or in progress")
+            return
+        }
+
         Log.d(TAG, "Manual reconnection requested")
         shouldReconnect = true
         reconnectAttempts = 0
-        disconnect()
+
+        // Only disconnect if currently connected
+        if (_connectionState.value.isConnected) {
+            disconnect()
+        }
 
         CoroutineScope(Dispatchers.IO).launch {
-            delay(1000) // Short delay before reconnecting
-            connectAndSubscribe()
+            delay(2000) // Longer delay to prevent rapid reconnections
+            if (!_connectionState.value.isConnected) {
+                connectAndSubscribe()
+            }
         }
     }
 
@@ -346,7 +376,10 @@ class WebSocketClient(
                         val licenseName = messageObj?.optString("name")
 
                         Log.d(TAG, "License name: $licenseName")
-                        // You can return or process `licenseName` here
+
+                        // Notify QrDialogManager about payment completion
+                        QrDialogManager.notifyPaymentCompleted(licenseName ?: "")
+
                     } else {
                         Log.d(TAG, "Unhandled message type: $type")
                     }
@@ -431,8 +464,10 @@ class WebSocketClient(
     private fun cleanup() {
         pingJob?.cancel()
         connectionJob?.cancel()
+        reconnectJob?.cancel()
         _connectionState.value = ConnectionState(isConnected = false)
         pendingMessages.clear()
+        isReconnecting = false
     }
 
 }

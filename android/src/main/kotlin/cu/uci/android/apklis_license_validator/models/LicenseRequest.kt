@@ -4,5 +4,5 @@ import com.google.gson.annotations.SerializedName
 
 data class LicenseRequest(
     @SerializedName("package_name") val packageName: String,
-    val device: String
+    @SerializedName("device") val device: String
 )

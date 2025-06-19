@@ -13,13 +13,15 @@ import cu.uci.android.apklis_license_validator.models.PaymentRequest
 import cu.uci.android.apklis_license_validator.models.QrCode
 import cu.uci.android.apklis_license_validator.models.VerifyLicenseResponse
 import cu.uci.android.apklis_license_validator.signature_helpers.SignatureVerificationService
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.Continuation
 import kotlin.coroutines.resume
 import kotlin.coroutines.suspendCoroutine
+import kotlinx.coroutines.CancellableContinuation
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlin.coroutines.resume
 
 class PurchaseAndVerify {
     companion object {
@@ -103,7 +105,7 @@ class PurchaseAndVerify {
             context: Context,
             qrCode: QrCode,
             deviceIdAndUsername: Pair<String?, String?>?
-        ): Map<String, Any> = suspendCoroutine { continuation ->
+        ): Map<String, Any> = suspendCancellableCoroutine  { continuation ->
 
             // Flag to track if continuation has been resumed
             var isResumed = false
@@ -113,9 +115,9 @@ class PurchaseAndVerify {
                     Log.d(TAG, "WebSocket connected successfully")
                     // Now show the QR dialog since WebSocket is connected
                     if (!isResumed) {
-                        Log.d(TAG, "WebSocket now shows QR")
-                            showQrDialogAfterConnection(context, qrCode, continuation, deviceIdAndUsername) { resumed ->
-                            isResumed = resumed
+                        Log.d(TAG, "WebSocket connected, showing QR dialog")
+                        CoroutineScope(Dispatchers.Main).launch {
+                            showQrDialogAfterConnection(context, qrCode, deviceIdAndUsername, continuation)
                         }
                     }
                 }
@@ -140,8 +142,8 @@ class PurchaseAndVerify {
             try {
                 // Initialize and connect WebSocket
                 webSocketClient.init(getAccountCode(context), deviceIdAndUsername?.first ?: "")
-                webSocketClient.connectAndSubscribe()
                 WebSocketHolder.client = webSocketClient
+                webSocketClient.connectAndSubscribe()
 
 
             } catch (e: Exception) {
@@ -156,31 +158,71 @@ class PurchaseAndVerify {
             }
         }
 
-        private fun showQrDialogAfterConnection(
+        private suspend fun showQrDialogAfterConnection(
             context: Context,
             qrCode: QrCode,
-            continuation: Continuation<Map<String, Any>>,
             deviceIdAndUsername: Pair<String?, String?>?,
-            onResumed: (Boolean) -> Unit
+            continuation: CancellableContinuation<Map<String, Any>>
         ) {
+
             val qrData = qrCode.toJsonString()
             val qrDialogManager = QrDialogManager(context)
 
+            // Create payment callback to handle WebSocket messages
+            val paymentCallback = object : PaymentResultCallback {
+                override fun onPaymentCompleted(licenseName: String) {
+                    Log.d(TAG, "Payment completed with license: $licenseName")
+                    if (continuation.isActive) {
+                        continuation.resume(buildMap {
+                            put("success", true)
+                            put("paid", true)
+                            put("license", licenseName)
+                            put("username", deviceIdAndUsername?.second ?: "")
+                        })
+                    }
+                }
+
+                override fun onPaymentFailed(error: String) {
+                    Log.e(TAG, "Payment failed: $error")
+                    if (continuation.isActive) {
+                        continuation.resume(buildMap {
+                            put("error", error)
+                            put("paid", false)
+                            put("username", deviceIdAndUsername?.second ?: "")
+                        })
+                    }
+                }
+
+                override fun onDialogClosed() {
+                    Log.d(TAG, "Dialog was closed by user")
+                    if (continuation.isActive) {
+                        continuation.resume(buildMap {
+                            put("success", false)
+                            put("paid", false)
+                            put("error", "Dialog closed by user")
+                            put("username", deviceIdAndUsername?.second ?: "")
+                        })
+                    }
+                }
+            }
+
+
+            // Set the active payment callback
+            QrDialogManager.setActivePaymentCallback(paymentCallback)
+
+
+            // Show the dialog
             qrDialogManager.showQrDialog(qrCode, qrData) { success ->
-                onResumed(true)
-                if (success) {
-                    Log.d(TAG, "Dialog shown successfully")
-                    continuation.resume(buildMap<String, Any> {
-                        put("success", true)
-                        put("username", deviceIdAndUsername?.second ?: "")
-                    })
-                } else {
-                    val errorMessage = "Fallo al mostrar el diálogo"
+                if (!success) {
+                    val errorMessage = "Failed to show dialog"
                     Log.e(TAG, errorMessage)
-                    continuation.resume(buildMap<String, Any> {
-                        put("error", errorMessage)
-                        put("username", deviceIdAndUsername?.second ?: "")
-                    })
+                    if (continuation.isActive) {
+                        continuation.resume(buildMap {
+                            put("error", errorMessage)
+                            put("paid", false)
+                            put("username", deviceIdAndUsername?.second ?: "")
+                        })
+                    }
                 }
             }
         }
@@ -190,7 +232,7 @@ class PurchaseAndVerify {
             val deviceIdAndUsername :  Pair<String?, String?>? = getDeviceIdAndUsername(context)
 
             try {
-                 val accessToken = getAccountAccessToken(context)
+                    val accessToken = getAccountAccessToken(context)
 
                     val verificationResult = ApiService().verifyCurrentLicense(
                         LicenseRequest( packageId,deviceIdAndUsername?.first ?: ""),

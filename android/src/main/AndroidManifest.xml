@@ -15,17 +15,21 @@
     <!-- ACCESS INTERNET PERMISSION   -->
     <uses-permission android:name="android.permission.INTERNET" />
 
+    <!-- Prevent app from being killed in background -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+
+    <!-- For Android 12+ background activity launches -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+
     <application>
         <!-- QR Dialog Activity -->
         <activity
             android:name=".QrDialogActivity"
             android:theme="@android:style/Theme.DeviceDefault.Light.Dialog"
-            android:exported="false"
             android:launchMode="singleTop"
-            android:excludeFromRecents="true"
-            android:taskAffinity=""
-            android:stateNotNeeded="false"
-            android:noHistory="false" />
+            android:excludeFromRecents="true" />
     </application>
 
 </manifest>
