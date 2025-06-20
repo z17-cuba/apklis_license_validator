@@ -416,8 +416,6 @@ class WebSocketClient(
        val channelName = "APKLIS_DEVICES_TEST.$code.$channel"
        val subMsg = "SUB $channelName $subscriptionId\r\n"
 
-       Log.d(TAG, "Subscribing to channel: $channelName")
-
        if (_connectionState.value.isConnected) {
            webSocket?.send(subMsg)
            Log.d(TAG, "Subscription sent: ${subMsg.trim()}")
@@ -445,13 +443,13 @@ class WebSocketClient(
     }
 
     private fun sendPing() {
-        val pingMsg = "PING\r\n"
+        val pingMsg = "PING"
         webSocket?.send(pingMsg)
         Log.d(TAG, "Sent PING message")
     }
 
     private fun sendPong() {
-        val pongMsg = "PONG\r\n"
+        val pongMsg = "PONG"
         webSocket?.send(pongMsg)
         Log.d(TAG, "Sent PONG response")
     }
