@@ -18,10 +18,15 @@
     <!-- Prevent app from being killed in background -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
     <!-- For Android 12+ background activity launches -->
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+
+    <!-- Network state permissions for better connection handling -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />
 
     <application>
         <!-- QR Dialog Activity -->
@@ -30,6 +35,13 @@
             android:theme="@android:style/Theme.DeviceDefault.Light.Dialog"
             android:launchMode="singleTop"
             android:excludeFromRecents="true" />
+
+        <!-- WebSocket Service -->
+        <service
+            android:name=".WebSocketService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
     </application>
 
 </manifest>

@@ -23,6 +23,7 @@ class ApklisLicenseValidator {
     return ApklisLicensePaymentStatus(
       paid: (map['paid'] as bool?) ?? false,
       username: map['username'] as String?,
+      license: map['license'] as String?,
       error: map['error'] as String?,
       statusCode: map['status_code'] as int?,
     );

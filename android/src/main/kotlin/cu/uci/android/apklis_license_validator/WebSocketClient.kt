@@ -250,23 +250,31 @@ class WebSocketClient(
     }
 
 
+
+    // Improve the reconnect method
     fun reconnect() {
-        if (isReconnecting || _connectionState.value.isConnected) {
-            Log.d(TAG, "Skipping reconnection - already connected or in progress")
+        if (_connectionState.value.isConnected) {
+            Log.d(TAG, "Already connected, skipping reconnection")
+            return
+        }
+
+        if (isReconnecting) {
+            Log.d(TAG, "Reconnection already in progress")
             return
         }
 
         Log.d(TAG, "Manual reconnection requested")
         shouldReconnect = true
-        reconnectAttempts = 0
 
-        // Only disconnect if currently connected
-        if (_connectionState.value.isConnected) {
-            disconnect()
-        }
+        // Don't reset reconnectAttempts for manual reconnection
+        // This allows the user to manually retry even after max attempts
+
+        // Close existing connection if any
+        webSocket?.close(1000, "Manual reconnect")
+        cleanup()
 
         CoroutineScope(Dispatchers.IO).launch {
-            delay(2000) // Longer delay to prevent rapid reconnections
+            delay(2000) // Longer delay for manual reconnections
             if (!_connectionState.value.isConnected) {
                 connectAndSubscribe()
             }

@@ -48,6 +48,7 @@ class QrDialogActivity : Activity(), WebSocketEventListener {
     private var webSocketClient: WebSocketClient? = null
     private var isWebSocketConnected = false
     private var checkConnectionJob: Job? = null
+    private var hasReturnedFromExternalApp = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -123,12 +124,13 @@ class QrDialogActivity : Activity(), WebSocketEventListener {
         closeButton.setOnClickListener {
             dialog?.dismiss()
             QrDialogManager.notifyDialogClosed()
-            webSocketClient?.disconnect()
+            WebSocketService.stopService(this)
             finish()
         }
 
         // Finish activity when dialog is dismissed
         dialog?.setOnDismissListener {
+            WebSocketService.stopService(this)
             QrDialogManager.notifyDialogClosed()
             finish()
         }
@@ -150,6 +152,8 @@ class QrDialogActivity : Activity(), WebSocketEventListener {
     private fun openTransfermovil(qrData: String) {
 
         try {
+            hasReturnedFromExternalApp = true // Mark that we're leaving the app
+
             val sendIntent = Intent().apply {
                 action = Intent.ACTION_SEND
                 putExtra(Intent.EXTRA_TEXT, qrData)
@@ -160,8 +164,10 @@ class QrDialogActivity : Activity(), WebSocketEventListener {
             startActivity(sendIntent)
         } catch (e: ActivityNotFoundException) {
             Log.e(TAG, "Transfermóvil app not installed", e)
+            hasReturnedFromExternalApp = false
         } catch (e: Exception) {
             Log.e(TAG, "Error opening Transfermóvil app", e)
+            hasReturnedFromExternalApp = false
         }
     }
 
@@ -193,12 +199,29 @@ class QrDialogActivity : Activity(), WebSocketEventListener {
         cleanup()
     }
 
+    private fun checkWebSocketConnectionAfterReturn() {
+        Log.d(TAG, "Checking WebSocket connection after returning from external app")
+
+        webSocketClient?.let { client ->
+            if (!isWebSocketConnected) {
+                Log.w(TAG, "WebSocket not connected after return, forcing reconnection")
+                // Force a reconnection attempt
+                client.reconnect()
+            } else {
+                Log.d(TAG, "WebSocket already connected")
+            }
+        } ?: run {
+            Log.w(TAG, "WebSocket client is null, trying to get from service")
+            webSocketClient = WebSocketHolder.client
+            webSocketClient?.reconnect()
+        }
+    }
+
     private fun checkWebSocketConnection() {
         checkConnectionJob?.cancel()
         checkConnectionJob = CoroutineScope(Dispatchers.IO).launch {
             delay(WEBSOCKET_CHECK_DELAY)
 
-            // Only attempt reconnection if WebSocket exists but is not connected
             webSocketClient?.let { client ->
                 if (!isWebSocketConnected && !client.isReconnecting()) {
                     Log.w(TAG, "WebSocket not connected, attempting reconnection")
@@ -210,15 +233,12 @@ class QrDialogActivity : Activity(), WebSocketEventListener {
         }
     }
 
+
     private fun cleanup() {
         dialog?.dismiss()
         dialog = null
         checkConnectionJob?.cancel()
 
-        // Don't destroy WebSocket here - let it stay alive for reconnection
-        if (isFinishing) {
-            Log.d(TAG, "Activity is finishing")
-        }
     }
 
 
@@ -265,7 +285,6 @@ class QrDialogManager(private val context: Context) {
             activeDialog = null
 
             activePaymentCallback?.onPaymentCompleted(licenseName)
-            activePaymentCallback = null // Clear callback after use
         }
 
         fun notifyDialogClosed() {

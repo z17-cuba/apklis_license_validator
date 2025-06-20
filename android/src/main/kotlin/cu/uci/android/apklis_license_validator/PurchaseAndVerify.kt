@@ -92,7 +92,6 @@ class PurchaseAndVerify {
                         }
                     }
 
-                    // TODO: Unsubscribe and close from WebSocketClient when payment message arrives
                 }
             } catch (e: RemoteException) {
                 e.printStackTrace()
@@ -140,8 +139,12 @@ class PurchaseAndVerify {
             })
 
             try {
+                // Start WebSocket service if not already running
+                WebSocketService.startService(context, getAccountCode(context), deviceIdAndUsername?.first ?: "")
+
                 // Initialize and connect WebSocket
                 webSocketClient.init(getAccountCode(context), deviceIdAndUsername?.first ?: "")
+
                 WebSocketHolder.client = webSocketClient
                 webSocketClient.connectAndSubscribe()
 
