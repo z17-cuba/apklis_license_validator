@@ -8,20 +8,18 @@ import android.util.Log
 import androidx.annotation.RequiresPermission
 import cu.uci.android.apklis_license_validator.api_helpers.ApiResult
 import cu.uci.android.apklis_license_validator.api_helpers.ApiService
+import cu.uci.android.apklis_license_validator.models.ApklisAccountData
 import cu.uci.android.apklis_license_validator.models.LicenseRequest
 import cu.uci.android.apklis_license_validator.models.PaymentRequest
 import cu.uci.android.apklis_license_validator.models.QrCode
 import cu.uci.android.apklis_license_validator.models.VerifyLicenseResponse
 import cu.uci.android.apklis_license_validator.signature_helpers.SignatureVerificationService
 import kotlinx.coroutines.suspendCancellableCoroutine
-import kotlin.coroutines.Continuation
 import kotlin.coroutines.resume
-import kotlin.coroutines.suspendCoroutine
 import kotlinx.coroutines.CancellableContinuation
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlin.coroutines.resume
 
 class PurchaseAndVerify {
     companion object {
@@ -31,19 +29,18 @@ class PurchaseAndVerify {
 
         private val signatureVerificationService = SignatureVerificationService()
 
-
         @RequiresPermission(Manifest.permission.GET_ACCOUNTS)
         suspend fun purchaseLicense(context: Context, licenseUuid: String): Map<String, Any>? {
-            val deviceIdAndUsername :  Pair<String?, String?>? = getDeviceIdAndUsername(context)
+            val apklisAccountData : ApklisAccountData? = ApklisDataGetter.getApklisAccountData(context)
+
             try {
                 WebSocketClient().apply {
 
-                    val accessToken = getAccountAccessToken(context)
 
                     val paymentResult = ApiService().payLicenseWithTF(
-                        PaymentRequest(deviceIdAndUsername?.first ?: ""),
+                        PaymentRequest(apklisAccountData?.deviceId ?: ""),
                         licenseUuid,
-                        accessToken
+                        apklisAccountData?.accessToken ?: ""
                     )
 
                     return when (paymentResult) {
@@ -61,14 +58,14 @@ class PurchaseAndVerify {
                                 Log.w(TAG, "Signature verification failed for successful response")
                                 return buildMap<String, Any> {
                                     put("error", "Invalid response signature")
-                                    put("username", deviceIdAndUsername?.second ?: "")
+                                    put("username", apklisAccountData?.username ?: "")
                                 }
                             } else {
                                 // Handle WebSocket connection and QR dialog
                                 return handleWebSocketAndQrDialog(
                                     context,
                                     qrCode,
-                                    deviceIdAndUsername
+                                    apklisAccountData
                                 )
 
                             }
@@ -78,7 +75,7 @@ class PurchaseAndVerify {
                             Log.e(TAG, errorMessage)
                             buildMap<String, Any> {
                                 put("error", paymentResult.message)
-                                put("username", deviceIdAndUsername?.second ?: "")
+                                put("username", apklisAccountData?.username ?: "")
                                 paymentResult.code?.let { put("status_code", it) }
                             }
                         }
@@ -87,7 +84,7 @@ class PurchaseAndVerify {
                             Log.e(TAG, errorMessage)
                             buildMap<String, Any> {
                                 put("error", errorMessage)
-                                put("username", deviceIdAndUsername?.second ?: "")
+                                put("username", apklisAccountData?.username ?: "")
                             }
                         }
                     }
@@ -103,7 +100,7 @@ class PurchaseAndVerify {
         private suspend fun handleWebSocketAndQrDialog(
             context: Context,
             qrCode: QrCode,
-            deviceIdAndUsername: Pair<String?, String?>?
+            apklisAccountData : ApklisAccountData?
         ): Map<String, Any> = suspendCancellableCoroutine  { continuation ->
 
             // Flag to track if continuation has been resumed
@@ -116,7 +113,7 @@ class PurchaseAndVerify {
                     if (!isResumed) {
                         Log.d(TAG, "WebSocket connected, showing QR dialog")
                         CoroutineScope(Dispatchers.Main).launch {
-                            showQrDialogAfterConnection(context, qrCode, deviceIdAndUsername, continuation)
+                            showQrDialogAfterConnection(context, qrCode, apklisAccountData?.username ?: "", continuation)
                         }
                     }
                 }
@@ -132,7 +129,7 @@ class PurchaseAndVerify {
                         isResumed = true
                         continuation.resume(buildMap<String, Any> {
                             put("error", "WebSocket connection failed: $error")
-                            put("username", deviceIdAndUsername?.second ?: "")
+                            put("username", apklisAccountData?.username ?: "")
                         })
                     }
                 }
@@ -140,10 +137,10 @@ class PurchaseAndVerify {
 
             try {
                 // Start WebSocket service if not already running
-                WebSocketService.startService(context, getAccountCode(context), deviceIdAndUsername?.first ?: "")
+                WebSocketService.startService(context, apklisAccountData?.code ?: "", apklisAccountData?.deviceId ?: "")
 
                 // Initialize and connect WebSocket
-                webSocketClient.init(getAccountCode(context), deviceIdAndUsername?.first ?: "")
+                webSocketClient.init(apklisAccountData?.code ?: "", apklisAccountData?.deviceId ?: "")
 
                 WebSocketHolder.client = webSocketClient
                 webSocketClient.connectAndSubscribe()
@@ -155,7 +152,7 @@ class PurchaseAndVerify {
                     isResumed = true
                     continuation.resume(buildMap<String, Any> {
                         put("error", "Failed to initialize WebSocket: ${e.message}")
-                        put("username", deviceIdAndUsername?.second ?: "")
+                        put("username", apklisAccountData?.username ?: "")
                     })
                 }
             }
@@ -164,7 +161,7 @@ class PurchaseAndVerify {
         private suspend fun showQrDialogAfterConnection(
             context: Context,
             qrCode: QrCode,
-            deviceIdAndUsername: Pair<String?, String?>?,
+            username: String,
             continuation: CancellableContinuation<Map<String, Any>>
         ) {
 
@@ -180,7 +177,7 @@ class PurchaseAndVerify {
                             put("success", true)
                             put("paid", true)
                             put("license", licenseName)
-                            put("username", deviceIdAndUsername?.second ?: "")
+                            put("username", username)
                         })
                     }
                 }
@@ -191,7 +188,7 @@ class PurchaseAndVerify {
                         continuation.resume(buildMap {
                             put("error", error)
                             put("paid", false)
-                            put("username", deviceIdAndUsername?.second ?: "")
+                            put("username",username)
                         })
                     }
                 }
@@ -203,7 +200,7 @@ class PurchaseAndVerify {
                             put("success", false)
                             put("paid", false)
                             put("error", "Dialog closed by user")
-                            put("username", deviceIdAndUsername?.second ?: "")
+                            put("username", username)
                         })
                     }
                 }
@@ -223,7 +220,7 @@ class PurchaseAndVerify {
                         continuation.resume(buildMap {
                             put("error", errorMessage)
                             put("paid", false)
-                            put("username", deviceIdAndUsername?.second ?: "")
+                            put("username", username)
                         })
                     }
                 }
@@ -232,14 +229,13 @@ class PurchaseAndVerify {
 
         @RequiresPermission(Manifest.permission.GET_ACCOUNTS)
        suspend fun verifyCurrentLicense(context: Context, packageId: String): Map<String, Any>? {
-            val deviceIdAndUsername :  Pair<String?, String?>? = getDeviceIdAndUsername(context)
+             val apklisAccountData : ApklisAccountData? = ApklisDataGetter.getApklisAccountData(context)
 
             try {
-                    val accessToken = getAccountAccessToken(context)
 
                     val verificationResult = ApiService().verifyCurrentLicense(
-                        LicenseRequest( packageId,deviceIdAndUsername?.first ?: ""),
-                        accessToken
+                        LicenseRequest( packageId,apklisAccountData?.deviceId ?: ""),
+                        apklisAccountData?.accessToken ?: ""
                     )
 
                    return when (verificationResult) {
@@ -258,7 +254,7 @@ class PurchaseAndVerify {
                                 Log.w(TAG, "Signature verification failed for successful response")
                                 return buildMap<String, Any> {
                                     put("error", "Invalid response signature")
-                                    put("username", deviceIdAndUsername?.second ?: "")
+                                    put("username", apklisAccountData?.username ?: "")
                                 }
                             } else {
                                 Log.d(TAG, "Hay una licencia: $verificationResult");
@@ -266,7 +262,7 @@ class PurchaseAndVerify {
                                 buildMap<String, Any> {
                                     put("license", verificationResult.data.license)
                                     put("paid", hasPaidLicense)
-                                    put("username", deviceIdAndUsername?.second ?: "")
+                                    put("username", apklisAccountData?.username ?: "")
                                 }
                             }
 
@@ -276,7 +272,7 @@ class PurchaseAndVerify {
                             Log.e(TAG, errorMessage)
                             buildMap<String, Any> {
                                 put("error", verificationResult.message)
-                                put("username", deviceIdAndUsername?.second ?: "")
+                                put("username", apklisAccountData?.username ?: "")
                                 verificationResult.code?.let { put("status_code", it) }
                             }
                         }
@@ -285,7 +281,7 @@ class PurchaseAndVerify {
                             Log.e(TAG, errorMessage)
                             buildMap<String, Any> {
                                 put("error", errorMessage)
-                                put("username", deviceIdAndUsername?.second ?: "")
+                                put("username", apklisAccountData?.username ?: "")
                             }
                         }
                     }
@@ -295,51 +291,6 @@ class PurchaseAndVerify {
                 e.printStackTrace()
             }
             return null
-        }
-
-        @RequiresPermission(Manifest.permission.GET_ACCOUNTS)
-        private fun getDeviceIdAndUsername(context: Context): Pair<String?, String?>? {
-            val accountManager = AccountManager.get(context)
-            val accounts = accountManager.getAccountsByType(TYPE)
-            val account = accounts.firstOrNull()
-
-            return if (account != null) {
-                val deviceId = accountManager.getUserData(account, "device_id")
-                val username = account.name
-                Pair(deviceId, username)
-            } else {
-                null
-            }
-        }
-
-        @RequiresPermission(Manifest.permission.GET_ACCOUNTS)
-        private fun getAccountCode(context: Context): String {
-            val accountManager = AccountManager.get(context)
-            val accounts = accountManager.getAccountsByType(TYPE)
-
-            val account = accounts.firstOrNull()
-
-            return if (account != null) {
-                val code: String = accountManager.getUserData(account, "code")
-                code
-            } else {
-                ""
-            }
-        }
-
-        @RequiresPermission(Manifest.permission.GET_ACCOUNTS)
-        private fun getAccountAccessToken(context: Context): String {
-            val accountManager = AccountManager.get(context)
-            val accounts = accountManager.getAccountsByType(TYPE)
-
-            val account = accounts.firstOrNull()
-
-            return if (account != null) {
-                val accessToken: String = accountManager.getUserData(account, "access_token")
-                accessToken
-            } else {
-                ""
-            }
         }
 
 
@@ -362,7 +313,7 @@ class PurchaseAndVerify {
             return signatureVerificationService.verifySignature(
                 context,
                 responseString.toByteArray(),
-              signatureValue
+                signatureValue
             )
         }
     }

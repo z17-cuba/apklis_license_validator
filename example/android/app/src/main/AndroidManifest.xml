@@ -1,6 +1,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- For accessing other app's shared preferences -->
-    <uses-permission android:name="android.permission.INTERACT_ACROSS_USERS" />
+
+    <uses-permission android:name="cu.uci.android.apklis.READ_ACCOUNT_DATA" />
 
     <!-- For network access -->
     <uses-permission android:name="android.permission.INTERNET" />

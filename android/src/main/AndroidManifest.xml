@@ -8,6 +8,7 @@
     <uses-permission
         android:name="android.permission.USE_CREDENTIALS"
         android:maxSdkVersion="22" />
+    <uses-permission android:name="cu.uci.android.apklis.READ_ACCOUNT_DATA" />
 
     <!-- SHOW DIALOG OVERLAY PERMISSION   -->
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
