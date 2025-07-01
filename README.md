@@ -51,13 +51,15 @@ final status = ApklisLicensePaymentStatus(
 
 - **📁 signature_helper**: Carpeta con la clase que se encarga de validar que la petición a la API de Apklis y su respuesta se realizan de forma segura y sin intermediarios (**`SignatureVerificationService.kt`** 🔐).
 
+- **🔌 `ApklisDataGetter.kt`**: Clase se llama mediante la app de ejemplo en Flutter para obtener los datos del Provider expuesto en la app de Apklis necesarios para la validación.
+
 - **🔌 `ApklisLicenseValidatorPlugin.kt`**: Clase padre que se llama mediante la app de ejemplo en Flutter que reconoce los métodos llamativos y devuelve los valores/errores.
 
 - **⚙️ `PurchaseAndVerify.kt`**: Clase que contiene los métodos a llamar desde la clase padre **`ApklisLicenseValidatorPlugin`** y que contiene la lógica de la verificación y pago de licencias 💳.
 
 - **📱 `QRDialogManager.kt`**: Clase que se encarga de manejar, dibujar y mostrar el código QR del pago de Transfermóvil 📲.
 
-- **🔌 `WebSocketClient.kt`**: Clase que se encarga de conectarse a un servidor WebSocket para la retroalimentación inmediata del pago y el estado de la licencia en el dispositivo ⚡. De forma automática se encarga de la conexión al canal de la licencia asociada al dispositivo y al usuario, de la reconexión cada cierto tiempo para evitar desconexiones y de cerrar la conexión cuando ha terminado para ahorrar recursos 🔄.
+- **🔌 `WebSocketClient.kt` + `WebSocketService.kt`**: Clase (y servicio) que se encarga de conectarse a un servidor WebSocket para la retroalimentación inmediata del pago y el estado de la licencia en el dispositivo (incluso en 2do plano) ⚡. De forma automática se encarga de la conexión al canal de la licencia asociada al dispositivo y al usuario, de la reconexión cada cierto tiempo para evitar desconexiones y de cerrar la conexión cuando ha terminado para ahorrar recursos 🔄.
 
 
 ### Notas
