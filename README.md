@@ -43,6 +43,18 @@ final status = ApklisLicensePaymentStatus(
 );
 ```
 
+## Métodos y Status code asociados
+
+`verifyCurrentLicense`: 
+- **402**: si debes pagar por una licencia
+- **403**: si las credenciales no se han reconocido (puede haber expirado el access_token del usuario) - se recomienda al usuario que abra la aplicación de Apklis y se autentique (si no está autenticado), o que realice alguna acción para que solicite el refresh_token y el access_token en consecuencia
+- **404**: si el grupo de licencias no se ha publicado
+
+`verifyCurrentLicense`: 
+- **400**: problemas con el pago (suele ocurrir si da timeout la llamada al API del pago), con reintentar se resuelve
+- **403**: si las credenciales no se han reconocido (puede haber expirado el access_token del usuario) - se recomienda al usuario que abra la aplicación de Apklis y se autentique (si no está autenticado), o que realice alguna acción para que solicite el refresh_token y el access_token en consecuencia
+
+
 ## Estructura y clases nativas de Kotlin
 
 - **📁 api_helpers**: Carpeta con las clases requeridas para hacer las peticiones a la API de Apklis (**`ApiService.kt`** 🌐), para un wrapper de las respuestas de la API, ya sean de éxito o error y manejar de forma más eficiente cada estado de la verificación (**`ApiResult.kt`** ✅❌), y el interceptor para leer y probar de forma más cómoda el intercambio entre la API y el plugin (**`LoggingInterceptor.kt`** 📋).
