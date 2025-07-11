@@ -11,7 +11,7 @@
 
 # Android related
 android/.gradle/
-android/assets/
+android/src/main/assets/
 
 # IntelliJ related
 *.iml
