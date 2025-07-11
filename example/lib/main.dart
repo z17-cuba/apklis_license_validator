@@ -23,8 +23,6 @@ class ExampleAppState extends State<ExampleApp> {
     text: 'com.example.app',
   );
   final licenseIdController = TextEditingController(
-    // Esta ya esta pagada para alaincj y el device:
-    // gRGmIfx53dRcCRDU0MhOlTpZ0rlh4jZEvmRn0+21+KDPBsNHhhNEIohNiyhLdKHGlNMpEAiJDwpaxSNa+fHML/qjso4hyUqkPoPeKwwlQV8GWOWiPcXiECxnIb1aa658
     text: '70dd68bf-c0bf-4c10-b76f-5d906b8bb945',
   );
   ApklisLicensePaymentStatus? status;
