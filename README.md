@@ -78,6 +78,20 @@ final status = ApklisLicensePaymentStatus(
 
 Bajo la ruta **android/src/main/assets/license_private_key.pub** se debe colocar la llave de cifrado generada para cada desarrollador con la que se realiza la comprobación de cifrado para validar que la petición viene de un origen de confianza y se emite la validación en consecuencia
 
-Actualmente la aplicación móvil de Apklis soporta estas versiones de Android, desde [API 24](https://developer.android.com/tools/releases/platforms#7.0) hasta [API 35](https://developer.android.com/tools/releases/platforms#15). La intención inicial era seguir en la misma "idea" de soportar desde Android 7.0, pero para lograr el soporte en la validación de la firma cifrada en el plugin de la licencia se tuvo que migrar el plugin desde minSdk = 24 a [minSdk = 26](https://developer.android.com/tools/releases/platforms#8.0). 
+### FAQs - Errores conocidos
 
+Este error fue reportado en un Xiaomi Redmi Note 11 con Android 11 (pero no está ligado solo a ese dispositivo específico):
+Si te da error 403 con las credenciales de manera repetida, y ya agotaste las opciones:
+1. Iniciar sesión
+2. Hacer alguna acción para se refresque el token si expiró
+3. Cerrar sesión y volver a iniciar
+4. Revisar que Apklis esté en 2do plano
+5. Revisar en la sección de Ajustes del teléfono -> Cuentas y sincronización, y comprobar que el usuario/cuenta de Apklis se está creando correctamente
+
+Entonces se sugiere agregar esta línea en el Android Manifest de su aplicación:
+```xml
+<queries>
+<package android:name="cu.uci.android.apklis" />
+</queries>
+```
 
