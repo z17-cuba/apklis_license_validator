@@ -1,8 +1,6 @@
-
 package cu.uci.android.apklis_license_validator
 
 import android.content.Context
-import android.os.Bundle
 import android.util.Log
 import androidx.annotation.NonNull
 import io.flutter.embedding.engine.plugins.FlutterPlugin
@@ -10,10 +8,6 @@ import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import io.flutter.plugin.common.MethodChannel.MethodCallHandler
 import io.flutter.plugin.common.MethodChannel.Result
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 class ApklisLicenseValidatorPlugin : FlutterPlugin, MethodCallHandler {
     /// The MethodChannel that will the communication between Flutter and native Android
@@ -34,43 +28,47 @@ class ApklisLicenseValidatorPlugin : FlutterPlugin, MethodCallHandler {
     }
 
     override fun onMethodCall(call: MethodCall, result: Result) {
+        val validator = ApklisLicenseValidator()
         when (call.method) {
             "purchaseLicense" -> {
                 try {
                     val licenseUuid = call.arguments<String>() ?: ""
+                    val validator = ApklisLicenseValidator()
 
-                    // Launch a coroutine to handle the suspend function
-                    CoroutineScope(Dispatchers.IO).launch {
-                        try {
-                            val response: Map<String, Any>? =
-                                PurchaseAndVerify.purchaseLicense(
-                                    context,  licenseUuid)
+                    validator.purchaseLicense(context, licenseUuid, object :
+                        ApklisLicenseValidator.LicenseCallback {
+                        override fun onSuccess(response: Map<String, Any>) {
+                            // License purchased successfully
+                            Log.d(TAG, "Purchase successful: $response")
 
-                            Log.d(TAG, "response: $response")
-
-                                if(response != null){
-                                    withContext(Dispatchers.Main) {
-                                        // Register a "success" callback to be returned to the main app
-                                        result.success(response)
-                                    }
-                                }
-
-                        } catch (e: Exception) {
-                            // Log the exception and return an error to Flutter
-                            Log.e(TAG, "Error purchasing license", e)
-                            withContext(Dispatchers.Main) {
-                                result.error(
-                                    "PURCHASE_ERROR",
-                                    "Failed to purchase license: ${e.message}",
-                                    null
-                                )
-                            }
+                            // Return success to Flutter
+                            result.success(response)
                         }
-                    }
+
+                        override fun onError(error: ApklisLicenseValidator.LicenseError) {
+                            // Handle purchase error
+                            Log.e(TAG, "Purchase failed: ${error.message}")
+
+                            // Return error to Flutter
+                            result.error(
+                                "PURCHASE_ERROR",
+                                "Failed to purchase license: ${error.message}",
+                                mapOf(
+                                    "code" to error.code,
+                                    "message" to error.message
+                                )
+                            )
+                        }
+                    })
+
                 } catch (e: Exception) {
                     // Log the exception and return an error to Flutter
                     Log.e(TAG, "Error purchasing license", e)
-                    result.error("PURCHASE_ERROR", "Fallo al pagar licencia: ${e.message}", null)
+                    result.error(
+                        "PURCHASE_ERROR",
+                        "Failed to purchase license: ${e.message}",
+                        null
+                    )
                 }
             }
 
@@ -78,40 +76,38 @@ class ApklisLicenseValidatorPlugin : FlutterPlugin, MethodCallHandler {
                 try {
                     val packageId = call.arguments<String>() ?: ""
 
-                    // Launch a coroutine to handle the suspend function
-                    CoroutineScope(Dispatchers.IO).launch {
-                        try {
-                            val response: Map<String, Any>? =
-                                PurchaseAndVerify.verifyCurrentLicense(context, packageId)
+                    validator.verifyCurrentLicense(context, packageId, object :
+                        ApklisLicenseValidator.LicenseCallback {
+                        override fun onSuccess(response: Map<String, Any>) {
+                            // License verification successful
+                            Log.d(TAG, "Verification successful: $response")
 
-                            Log.d(TAG, "response: $response")
-
-                            if(response != null){
-                                withContext(Dispatchers.Main) {
-                                    // Register a "success" callback to be returned to the main app
-                                    result.success(response)
-                                }
-                            }
-
-                        } catch (e: Exception) {
-                            // Log the exception and return an error to Flutter
-                            Log.e(TAG, "Error verifying license", e)
-                            withContext(Dispatchers.Main) {
-                                result.error(
-                                    "VERIFY_ERROR",
-                                    "Fallo al verificar licencia: ${e.message}",
-                                    null
-                                )
-                            }
+                            // Return success to Flutter
+                            result.success(response)
                         }
-                    }
+
+                        override fun onError(error: ApklisLicenseValidator.LicenseError) {
+                            // Handle verification error
+                            Log.e(TAG, "Verification failed: ${error.message}")
+
+                            // Return error to Flutter
+                            result.error(
+                                "VERIFY_ERROR",
+                                "Failed to verify license: ${error.message}",
+                                mapOf(
+                                    "code" to error.code,
+                                    "message" to error.message
+                                )
+                            )
+                        }
+                    })
 
                 } catch (e: Exception) {
                     // Log the exception and return an error to Flutter
                     Log.e(TAG, "Error verifying license", e)
                     result.error(
                         "VERIFY_ERROR",
-                        "Fallo al verificar licencia: ${e.message}",
+                        "Failed to verify license: ${e.message}",
                         null
                     )
                 }
@@ -122,7 +118,8 @@ class ApklisLicenseValidatorPlugin : FlutterPlugin, MethodCallHandler {
             }
         }
     }
-    override fun onDetachedFromEngine( binding: FlutterPlugin.FlutterPluginBinding) {
+
+    override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         channel.setMethodCallHandler(null)
     }
 }

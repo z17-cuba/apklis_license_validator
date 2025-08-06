@@ -3,13 +3,17 @@ version '1.0-SNAPSHOT'
 
 buildscript {
     ext.kotlin_version = '1.9.10'
+    ext {
+        agp_version = '8.11.1'
+    }
     repositories {
         google()
         mavenCentral()
+        maven { url 'https://jitpack.io' }
     }
 
     dependencies {
-        classpath 'com.android.tools.build:gradle:7.4.2'
+        classpath "com.android.tools.build:gradle:$agp_version"
         classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
     }
 }
@@ -18,6 +22,7 @@ rootProject.allprojects {
     repositories {
         google()
         mavenCentral()
+        maven { url 'https://jitpack.io' }
     }
 }
 
@@ -27,7 +32,7 @@ apply plugin: 'kotlin-parcelize'
 
 android {
     namespace="cu.uci.android.apklis_license_validator"
-    compileSdkVersion 34
+    compileSdkVersion 35
 
     buildFeatures {
         viewBinding = true
@@ -53,26 +58,7 @@ android {
 
 dependencies {
     implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk7:$kotlin_version"
-
-    // For AndroidX Core (provides Context, Log, etc. through ktx extensions)
-    implementation 'androidx.core:core-ktx:1.9.0'
-
-    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.6.4'
-    implementation 'com.squareup.okhttp3:okhttp:4.10.0'
-    // Because WebSocketLib is a custom implementation on top of OkHttp's WebSocket:
-    implementation "com.squareup.okhttp3:okhttp-urlconnection:4.10.0"
-    
-    // Optional for better JSON parsing
-    implementation 'com.google.code.gson:gson:2.10.1'
-
-    // QR Code generation/view
-    implementation 'com.journeyapps:zxing-android-embedded:4.3.0'
-    implementation 'com.google.zxing:core:3.5.2'
-    implementation 'com.lightspark:compose-qr-code:1.0.1'
-    implementation 'androidx.appcompat:appcompat:1.6.1'
-
-    // Dependencias para criptografía
-    implementation 'androidx.security:security-crypto:1.1.0-alpha06'
+    implementation 'com.github.z17-Cuba:ApklisLicenseValidator:master-SNAPSHOT'
 }
 
 
