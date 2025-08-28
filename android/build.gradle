@@ -58,7 +58,10 @@ android {
 
 dependencies {
     implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk7:$kotlin_version"
-    implementation 'com.github.z17-Cuba:ApklisLicenseValidator:master-SNAPSHOT'
+     implementation('com.github.z17-Cuba:ApklisLicenseValidator:master-SNAPSHOT') {
+        exclude group: 'cu.uci.android', module: 'apklis_license_validator'
+        exclude group: 'androidx.databinding'
+    }
 }
 
 
