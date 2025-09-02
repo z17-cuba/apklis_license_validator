@@ -2,6 +2,13 @@ name: apklis_license_validator
 description: Paquete de Flutter para el chequeo y compra de licencias de Apklis.
 publish_to: "none"
 
+flutter:
+  plugin:
+    platforms:
+      android:
+        package: cu.uci.android.apklis_license_validator
+        pluginClass: ApklisLicenseValidatorPlugin
+
 environment:
   sdk: ^3.5.1
 
@@ -13,10 +20,3 @@ dev_dependencies:
   flutter_lints: ^4.0.0
   flutter_test:
     sdk: flutter
-
-flutter:
-  plugin:
-    platforms:
-      android:
-        package: cu.uci.android.apklis_license_validator
-        pluginClass: ApklisLicenseValidatorPlugin
