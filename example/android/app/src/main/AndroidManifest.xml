@@ -49,4 +49,8 @@
             <data android:mimeType="text/plain" />
         </intent>
     </queries>
+
+    <queries>
+        <package android:name="cu.uci.android.apklis" />
+    </queries>
 </manifest>
