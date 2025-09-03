@@ -16,6 +16,7 @@ class ApklisLicenseValidatorPlugin : FlutterPlugin, MethodCallHandler {
     /// when the Flutter Engine is detached from the Activity
     private lateinit var channel: MethodChannel
     private lateinit var context: Context
+    private val validator = ApklisLicenseValidator()
 
     companion object {
         private const val TAG = "ApklisLicenseValidator"
@@ -28,12 +29,10 @@ class ApklisLicenseValidatorPlugin : FlutterPlugin, MethodCallHandler {
     }
 
     override fun onMethodCall(call: MethodCall, result: Result) {
-        val validator = ApklisLicenseValidator()
         when (call.method) {
             "purchaseLicense" -> {
                 try {
                     val licenseUuid = call.arguments<String>() ?: ""
-                    val validator = ApklisLicenseValidator()
 
                     validator.purchaseLicense(context, licenseUuid, object :
                         ApklisLicenseValidator.LicenseCallback {
