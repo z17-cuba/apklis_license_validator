@@ -1,15 +1,15 @@
-group 'cu.uci.android.apklis_license_validator'
-version '1.0-SNAPSHOT'
+group = 'cu.uci.android.apklis_license_validator'
+version = '1.0-SNAPSHOT'
 
 buildscript {
     ext.kotlin_version = '1.9.10'
     ext {
-        agp_version = '8.11.1'
+        agp_version = '8.4.2'
     }
     repositories {
         google()
         mavenCentral()
-        maven { url 'https://jitpack.io' }
+        maven { url = 'https://jitpack.io' }
     }
 
     dependencies {
@@ -22,7 +22,7 @@ rootProject.allprojects {
     repositories {
         google()
         mavenCentral()
-        maven { url 'https://jitpack.io' }
+        maven { url = 'https://jitpack.io' }
     }
 }
 
@@ -31,24 +31,28 @@ apply plugin: 'kotlin-android'
 apply plugin: 'kotlin-parcelize'
 
 android {
-    namespace="cu.uci.android.apklis_license_validator"
-    compileSdkVersion 35
+    namespace = "cu.uci.android.apklis_license_validator"
+    compileSdk = 35
 
     buildFeatures {
         viewBinding = true
     }
 
     compileOptions {
-        sourceCompatibility JavaVersion.VERSION_17
-        targetCompatibility JavaVersion.VERSION_17
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    kotlinOptions {
+        jvmTarget = '17'
     }
 
     sourceSets {
         main.java.srcDirs += 'src/main/kotlin'
     }
     defaultConfig {
-        minSdkVersion 26
-        targetSdkVersion 34
+        minSdk = 26
+        targetSdk = 34
     }
     lintOptions {
         disable 'InvalidPackage'
@@ -58,10 +62,5 @@ android {
 
 dependencies {
     implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk7:$kotlin_version"
-     implementation('com.github.z17-Cuba:ApklisLicenseValidator:master-SNAPSHOT') {
-        exclude group: 'cu.uci.android', module: 'apklis_license_validator'
-        exclude group: 'androidx.databinding'
-    }
+    implementation 'com.github.z17-cuba:ApklisLicenseValidator:v.0.0.5'
 }
-
-
