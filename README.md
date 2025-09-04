@@ -50,7 +50,7 @@ final status = ApklisLicensePaymentStatus(
 - **403**: si las credenciales no se han reconocido (puede haber expirado el access_token del usuario) - se recomienda al usuario que abra la aplicación de Apklis y se autentique (si no está autenticado), o que realice alguna acción para que solicite el refresh_token y el access_token en consecuencia
 - **404**: si el grupo de licencias no se ha publicado
 
-`verifyCurrentLicense`: 
+`purchaseLicense`: 
 - **400**: problemas con el pago (suele ocurrir si da timeout la llamada al API del pago), con reintentar se resuelve
 - **403**: si las credenciales no se han reconocido (puede haber expirado el access_token del usuario) - se recomienda al usuario que abra la aplicación de Apklis y se autentique (si no está autenticado), o que realice alguna acción para que solicite el refresh_token y el access_token en consecuencia
 
