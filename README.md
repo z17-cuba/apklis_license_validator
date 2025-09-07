@@ -76,7 +76,7 @@ final status = ApklisLicensePaymentStatus(
 
 ### Notas
 
-Bajo la ruta **android/src/main/assets/license_private_key.pub** se debe colocar la llave de cifrado generada para cada desarrollador con la que se realiza la comprobación de cifrado para validar que la petición viene de un origen de confianza y se emite la validación en consecuencia
+Bajo la ruta **android/app/src/main/assets/license_private_key.pub** se debe colocar la llave de cifrado generada para cada desarrollador con la que se realiza la comprobación de cifrado para validar que la petición viene de un origen de confianza y se emite la validación en consecuencia
 
 ### FAQs - Errores conocidos
 
