@@ -53,4 +53,14 @@
     <queries>
         <package android:name="cu.uci.android.apklis" />
     </queries>
+
+    <queries>
+        <intent> 
+            <action android:name="android.accounts.AccountAuthenticator" /> 
+        </intent> 
+        <intent> 
+            <action android:name="android.intent.action.VIEW" /> 
+            <data android:scheme="apklis" /> 
+        </intent> 
+    </queries>
 </manifest>
