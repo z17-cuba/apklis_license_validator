@@ -80,6 +80,7 @@ Bajo la ruta **android/app/src/main/assets/license_private_key.pub** se debe col
 
 ### FAQs - Errores conocidos
 
+## Xiaomi Redmi Note 11 con Android 11
 Este error fue reportado en un Xiaomi Redmi Note 11 con Android 11 (pero no está ligado solo a ese dispositivo específico):
 Si te da error 403 con las credenciales de manera repetida, y ya agotaste las opciones:
 1. Iniciar sesión
@@ -95,3 +96,18 @@ Entonces se sugiere agregar esta línea en el Android Manifest de su aplicación
 </queries>
 ```
 
+## Android 16
+Aplica para el mismo error de arriba pero para dispositivos con Android 16.
+Fue probado y funciona con un Google Pixel 8 y en un Samsung S24
+```xml
+
+    <queries>
+        <intent> 
+            <action android:name="android.accounts.AccountAuthenticator" /> 
+        </intent> 
+        <intent> 
+            <action android:name="android.intent.action.VIEW" /> 
+            <data android:scheme="apklis" /> 
+        </intent> 
+    </queries>
+```
